@@ -146,7 +146,10 @@
     $('last-trigger').textContent = nextState.lastTrigger || '—';
     const memory = nextState.memory || {};
     $('memory-count').textContent = `${memory.count || 0} memories${memory.screenshotSaved ? ' · screenshot saved' : ''}`;
-    $('voice-status').textContent = nextState.voice?.error || (nextState.voice?.status === 'on' ? 'Microphone on' : 'Microphone off');
+    $('voice-status').textContent = nextState.voice?.error
+      || (nextState.voice?.status === 'unavailable'
+        ? 'Voice capture unavailable'
+        : nextState.voice?.status === 'on' ? 'Microphone on' : 'Microphone off');
     $('stop-monitoring').textContent = nextState.monitoring ? 'Stop monitoring' : 'Start monitoring';
   }
 

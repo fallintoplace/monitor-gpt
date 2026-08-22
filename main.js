@@ -65,14 +65,14 @@ function restoreWindow(window, shouldShow) {
   window.showInactive();
 }
 
-async function captureWithoutAppWindows({ displayNumber }) {
+async function captureWithoutAppWindows({ displayNumber, maxImageWidth }) {
   const controlWasVisible = Boolean(controlWindow && !controlWindow.isDestroyed() && controlWindow.isVisible());
   const resultWasVisible = Boolean(resultWindow && !resultWindow.isDestroyed() && resultWindow.isVisible());
   controlWindow?.hide();
   resultWindow?.hide();
   await new Promise((resolve) => setTimeout(resolve, 90));
   try {
-    return await captureDisplay({ displayNumber });
+    return await captureDisplay({ displayNumber, maxImageWidth });
   } finally {
     positionResultWindow();
     restoreWindow(resultWindow, resultWasVisible);
@@ -117,20 +117,7 @@ function registerGlobalShortcuts() {
     }
   }
 
-  const voice = [];
-  try {
-    const accelerator = 'Control+Shift+Alt+V';
-    if (globalShortcut.register(accelerator, () => runner.setVoiceState({
-      status: 'error',
-      error: 'Voice capture is not enabled in this rebuild yet.'
-    }))) {
-      voice.push(accelerator);
-      registeredAccelerators.push(accelerator);
-    }
-  } catch (error) {
-    console.warn('Could not register voice shortcut:', error.message);
-  }
-  runner.setHotkeys({ analysis: registeredAnalysis, voice });
+  runner.setHotkeys({ analysis: registeredAnalysis, voice: [] });
 }
 
 async function startApp() {

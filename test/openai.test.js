@@ -37,3 +37,21 @@ test('should never include the API key in a request error', async () => {
     /OpenAI request failed \(401\): invalid key/
   );
 });
+
+test('should abort a request that exceeds the timeout', async () => {
+  await assert.rejects(
+    requestOpenAI({
+      apiKey: 'sk-test-secret-value',
+      payload: {},
+      timeoutMs: 10,
+      fetchImpl: (_endpoint, { signal }) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      })
+    }),
+    /OpenAI request timed out after 1 seconds\./
+  );
+});

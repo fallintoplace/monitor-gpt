@@ -16,8 +16,10 @@ function makeRunner(options = {}) {
     settings: { ...DEFAULT_SETTINGS, sourceDisplayNumber: 1, skipUnchanged: true },
     memory,
     capture: async () => ({ buffer: Buffer.from(options.image || 'same image') }),
-    requestOpenAI: async () => {
+    logger: { error: () => {} },
+    requestOpenAI: async ({ payload }) => {
       calls += 1;
+      if (options.requestOpenAI) return options.requestOpenAI({ payload, call: calls });
       return { text: options.answer || 'answer' };
     }
   });
@@ -51,6 +53,34 @@ test('should analyze again when the prompt changes even if the image is identica
   await runner.triggerAnalysis();
   runner.updateSettings({ prompt: 'A different question' });
   await runner.triggerAnalysis();
+  assert.equal(getCalls(), 2);
+});
+
+test('should retry the same image after an API failure', async () => {
+  let failures = 1;
+  const { runner, getCalls } = makeRunner({
+    requestOpenAI: async () => {
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('temporary failure');
+      }
+      return { text: 'recovered' };
+    }
+  });
+
+  const first = await runner.triggerAnalysis();
+  const second = await runner.triggerAnalysis();
+
+  assert.match(first.error, /temporary failure/);
+  assert.equal(second.answer, 'recovered');
+  assert.equal(getCalls(), 2);
+  assert.equal(runner.snapshot().result, 'recovered');
+});
+
+test('should analyze again when a one-off prompt override changes', async () => {
+  const { runner, getCalls } = makeRunner();
+  await runner.triggerAnalysis({ promptOverride: 'first question' });
+  await runner.triggerAnalysis({ promptOverride: 'second question' });
   assert.equal(getCalls(), 2);
 });
 
