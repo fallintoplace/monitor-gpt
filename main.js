@@ -102,7 +102,6 @@ function registerGlobalShortcuts() {
     'Command+Shift+A',
     'Control+Shift+A',
     'PageDown',
-    'Delete',
     'End'
   ];
   const registeredAnalysis = [];
