@@ -1,0 +1,20 @@
+{
+  "name": "monitor-gpt",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local macOS desktop app that analyzes one monitor and shows the result on another.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0"
+  }
+}

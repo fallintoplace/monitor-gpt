@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Monitor GPT · Result</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="result-page" data-theme="light">
+    <main class="result-shell">
+      <header class="result-header">
+        <div>
+          <p class="eyebrow">MONITOR GPT <span class="orb" aria-hidden="true">◌</span></p>
+          <p class="eyebrow result-label">LIVE ANALYSIS</p>
+          <p id="result-updated" class="muted">Waiting for the first screenshot…</p>
+        </div>
+        <div class="result-top-status">
+          <span id="result-source" class="source-label">SOURCE: —</span>
+          <span id="result-status" class="status-pill"><span class="status-dot"></span> READY</span>
+        </div>
+      </header>
+
+      <section id="result-content" class="result-content">
+        <div id="big-result" class="big-result">
+          <div id="result-prose" class="result-prose"></div>
+          <aside id="result-code" class="result-code" aria-label="Code from answer"></aside>
+        </div>
+        <div id="result-empty" class="result-empty">Waiting for the first analysis.</div>
+        <div id="result-error" class="result-error hidden"></div>
+      </section>
+
+      <footer class="result-footer">
+        <span>POLLING LOCAL RESULT STATE</span>
+        <span id="result-footer-source">SOURCE: —</span>
+      </footer>
+      <figure id="last-capture" class="last-capture hidden">
+        <figcaption>LAST CAPTURE</figcaption>
+        <img id="last-capture-image" alt="Last captured source screen">
+        <small id="last-capture-label">—</small>
+      </figure>
+    </main>
+    <script src="/markdown.js" defer></script>
+    <script src="/result.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Monitor GPT</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="control-page" data-theme="light">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">LOCAL DESKTOP MONITOR</p>
+        <h1>Monitor GPT <span class="orb" aria-hidden="true">◌</span></h1>
+        <p class="subtitle">Watch one screen. Ask a question about it. Read the answer on another screen.</p>
+      </div>
+      <div class="header-actions">
+        <span id="api-status" class="status-pill">● API key not configured</span>
+        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A · Analyze</span>
+      </div>
+    </header>
+
+    <main class="control-main">
+      <section class="panel input-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">01 / INPUT</p>
+            <h2>Choose what to watch</h2>
+          </div>
+          <button id="refresh-displays" class="icon-button" type="button" title="Refresh displays" aria-label="Refresh displays">↻</button>
+        </div>
+
+        <div class="form-grid two-up">
+          <label>
+            <span>Screen to analyze</span>
+            <select id="source-display"></select>
+            <small>macOS capture order is shown as the D-number in each option.</small>
+          </label>
+          <label>
+            <span>Screen for the result</span>
+            <select id="result-display"></select>
+            <small>The result window opens there and remains resizable.</small>
+          </label>
+        </div>
+
+        <label class="prompt-label">
+          <span>Your prompt</span>
+          <textarea id="prompt" rows="5" spellcheck="true"></textarea>
+          <small>Visible text on the source screen is treated as untrusted data.</small>
+        </label>
+
+        <div class="form-grid four-up">
+          <label>
+            <span>Model</span>
+            <select id="model">
+              <option value="gpt-5.6-luna">GPT-5.6 Luna · efficient</option>
+              <option value="gpt-5.6-terra">GPT-5.6 Terra · balanced</option>
+              <option value="gpt-5.6-sol">GPT-5.6 Sol · strongest</option>
+              <option value="custom">Custom model</option>
+            </select>
+            <small id="model-help">Luna is the efficient default for frequent checks.</small>
+          </label>
+          <label id="custom-model-wrap" class="hidden">
+            <span>Custom model ID</span>
+            <input id="custom-model" type="text" autocomplete="off" placeholder="gpt-...">
+            <small>Use an exact model ID available to your API project.</small>
+          </label>
+          <label>
+            <span>Reasoning effort</span>
+            <select id="reasoning">
+              <option value="none">None · fastest</option>
+              <option value="low">Low · faster</option>
+              <option value="medium">Medium · default</option>
+              <option value="high">High · deeper</option>
+              <option value="xhigh">Xhigh · deepest</option>
+              <option value="max">Max · most deliberate</option>
+            </select>
+          </label>
+          <label>
+            <span>Image detail</span>
+            <select id="image-detail">
+              <option value="auto">Auto</option>
+              <option value="low">Low · cheaper</option>
+              <option value="high">High · clearer</option>
+              <option value="original">Original</option>
+            </select>
+          </label>
+          <label>
+            <span>Trigger mode</span>
+            <select id="trigger-mode">
+              <option value="click">Click only</option>
+              <option value="hotkeys">Global hotkeys</option>
+              <option value="click-hotkeys">Click + global hotkeys</option>
+              <option value="auto">Automatic polling</option>
+            </select>
+            <small>Page Down, Delete, End, and the modifier shortcuts trigger analysis when registered.</small>
+          </label>
+        </div>
+
+        <div class="form-grid four-up compact-grid">
+          <label>
+            <span>Analyze every</span>
+            <div class="input-with-unit"><input id="analyze-every" type="number" min="1" step="1"><em>sec</em></div>
+          </label>
+          <label>
+            <span>Result poll</span>
+            <div class="input-with-unit"><input id="result-poll" type="number" min="250" step="250"><em>ms</em></div>
+          </label>
+          <label>
+            <span>Max image width</span>
+            <input id="max-image-width" type="number" min="0" step="64">
+            <small>Use 0 to keep the original size.</small>
+          </label>
+          <label>
+            <span>Result text size</span>
+            <div class="input-with-unit"><input id="result-font-size" type="number" min="9" max="32" step="1"><em>px</em></div>
+            <small>Base size on the result monitor.</small>
+          </label>
+        </div>
+
+        <div class="check-row">
+          <label class="check-label"><input id="skip-unchanged" type="checkbox"><span>Skip unchanged</span><small>Save API calls when the screenshot is identical.</small></label>
+          <label class="check-label"><input id="result-autofit" type="checkbox"><span>Auto-fit long answers</span><small>Reduce text only when the answer would overflow.</small></label>
+        </div>
+
+        <div class="form-grid three-up">
+          <label>
+            <span>Result layout</span>
+            <select id="result-layout">
+              <option value="single">Single column</option>
+              <option value="columns">Three-column flow</option>
+              <option value="five">Five-column workspace</option>
+            </select>
+            <small>Code stays in one scrollable panel; prose can flow into occupied columns.</small>
+          </label>
+          <label>
+            <span>Appearance</span>
+            <select id="theme">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="system">Follow system</option>
+            </select>
+          </label>
+          <div class="settings-note"><strong>Persists automatically</strong><br>Settings live in Electron user data, outside this checkout.</div>
+        </div>
+
+        <div class="action-row">
+          <button id="save-settings" class="secondary-button" type="button">Save settings</button>
+          <button id="analyze-now" class="primary-button" type="button">Analyze now</button>
+          <button id="stop-monitoring" class="danger-button" type="button">Stop monitoring</button>
+          <span id="control-status" class="inline-status">Ready</span>
+        </div>
+      </section>
+
+      <section class="panel memory-panel">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">MEMORY</p>
+            <h2>Remember what happened before</h2>
+          </div>
+          <span id="memory-count" class="status-pill">0 memories</span>
+        </div>
+        <p class="panel-description">Recent prompts and answers stay on this Mac. Only a few old answer snippets are optionally sent as low-priority context. The latest screenshot is saved locally for debugging; microphone audio is never saved.</p>
+        <div class="form-grid four-up compact-grid">
+          <label class="check-label"><input id="memory-enabled" type="checkbox"><span>Use local memory</span><small>Allow historical text in the next analysis.</small></label>
+          <label>
+            <span>Stored entries</span>
+            <input id="memory-max" type="number" min="0" max="100" step="1">
+            <small>0 stores no history.</small>
+          </label>
+          <label>
+            <span>Old answers used next time</span>
+            <input id="memory-context" type="number" min="0" max="20" step="1">
+            <small>Lower means less influence.</small>
+          </label>
+          <div class="memory-actions">
+            <button id="view-memory" class="secondary-button" type="button">View saved memory</button>
+            <button id="clear-memory" class="danger-button" type="button">Clear memory</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel voice-panel">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">VOICE MOMENT</p>
+            <h2>Capture the last few seconds</h2>
+          </div>
+          <span id="voice-status" class="status-pill">Microphone off</span>
+        </div>
+        <p class="panel-description">The screen-analysis rebuild keeps voice controls visible but does not request microphone permission until the audio path is reconnected.</p>
+        <div class="action-row">
+          <button id="voice-enable" class="secondary-button" type="button" disabled>Enable microphone</button>
+          <button id="voice-analyze" class="primary-button" type="button" disabled>Analyze voice moment</button>
+        </div>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">02 / OUTPUT</p>
+            <h2>Latest answer</h2>
+          </div>
+          <span id="output-status" class="status-pill">Ready</span>
+        </div>
+        <p id="completed-at" class="muted">Waiting for the first analysis.</p>
+        <pre id="latest-answer" class="control-answer">No analysis yet.</pre>
+        <div class="meta-grid">
+          <div><span>Status</span><strong id="output-status-text">Ready</strong></div>
+          <div><span>Last image</span><strong id="last-image-size">—</strong></div>
+          <div><span>Run trigger</span><strong id="last-trigger">—</strong></div>
+        </div>
+        <p class="panel-description">The result monitor polls the local app without rebuilding the page on every tick, so its scroll position stays put.</p>
+      </section>
+    </main>
+
+    <dialog id="memory-dialog" class="memory-dialog">
+      <div class="dialog-heading"><h2>Saved memory</h2><button id="close-memory" class="icon-button" type="button" aria-label="Close">×</button></div>
+      <div id="memory-list" class="memory-list"></div>
+    </dialog>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
