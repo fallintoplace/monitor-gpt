@@ -44,6 +44,9 @@ test('should serve state and accept a non-blocking analyze request', async () =>
   const state = await request(port, '/api/state');
   assert.equal(state.status, 200);
   assert.equal(JSON.parse(state.body).settings.model, 'gpt-5.6-luna');
+  const result = await request(port, '/result');
+  assert.equal(result.status, 200);
+  assert.match(result.body, /Monitor GPT · Result/);
   const accepted = await request(port, '/api/analyze', { method: 'POST', body: {} });
   assert.equal(accepted.status, 202);
   await new Promise((resolve) => setTimeout(resolve, 15));
