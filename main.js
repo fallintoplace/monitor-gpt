@@ -9,6 +9,7 @@ const { loadSettings } = require('./lib/config');
 const { LocalMemory } = require('./lib/memory');
 const { MonitorRunner } = require('./lib/runner');
 const { buildResponsesPayload, requestOpenAI } = require('./lib/openai');
+const { visibleWindowsOnDisplay } = require('./lib/window-capture');
 
 let controlWindow;
 let resultWindow;
@@ -66,17 +67,18 @@ function restoreWindow(window, shouldShow) {
 }
 
 async function captureWithoutAppWindows({ displayNumber, maxImageWidth }) {
-  const controlWasVisible = Boolean(controlWindow && !controlWindow.isDestroyed() && controlWindow.isVisible());
-  const resultWasVisible = Boolean(resultWindow && !resultWindow.isDestroyed() && resultWindow.isVisible());
-  controlWindow?.hide();
-  resultWindow?.hide();
+  const sourceDisplay = getDisplayList().find((display) => display.captureNumber === displayNumber);
+  const hiddenWindows = visibleWindowsOnDisplay(
+    [controlWindow, resultWindow],
+    sourceDisplay?.id,
+    (bounds) => screen.getDisplayMatching(bounds)
+  );
+  for (const window of hiddenWindows) window.hide();
   await new Promise((resolve) => setTimeout(resolve, 90));
   try {
     return await captureDisplay({ displayNumber, maxImageWidth });
   } finally {
-    positionResultWindow();
-    restoreWindow(resultWindow, resultWasVisible);
-    restoreWindow(controlWindow, controlWasVisible);
+    for (const window of hiddenWindows) restoreWindow(window, true);
   }
 }
 
