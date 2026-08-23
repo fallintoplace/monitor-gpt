@@ -173,7 +173,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .input-with-unit em { color: var(--muted); font-size: 12px; font-style: normal; }
 .check-row { align-items: stretch; margin: 4px 0 22px; }
 .check-label { border: 1px solid var(--line); border-radius: 14px; display: grid; grid-template-columns: auto 1fr; column-gap: 10px; padding: 12px 14px; }
-.check-label input { accent-color: var(--accent); grid-row: span 2; margin: 3px 0 0; width: 17px; }
+.check-label input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  accent-color: var(--accent);
+  align-self: start;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  grid-row: span 2;
+  height: 18px;
+  margin: 3px 0 0;
+  padding: 0;
+  width: 18px;
+}
 .check-label small { grid-column: 2; }
 .settings-note { background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel-strong)); border: 1px solid var(--line); border-radius: 13px; color: var(--muted); justify-content: center; padding: 12px 14px; }
 .settings-note strong { color: var(--accent); }
