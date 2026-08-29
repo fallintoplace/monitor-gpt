@@ -7,6 +7,10 @@
   let lastSettingsSignature = '';
   let saveTimer = null;
   let memoryData = null;
+  let voiceCapture = null;
+  let voiceCapturePromise = null;
+  let voiceCaptureGeneration = 0;
+  let voiceWanted = false;
 
   function displaySignature(displays) {
     return (displays || []).map((display) => `${display.id}:${display.captureNumber}:${display.width}x${display.height}`).join('|');
@@ -31,18 +35,24 @@
 
   function renderDisplays(nextState) {
     const signature = displaySignature(nextState.displays);
-    if (signature === lastDisplaySignature) return;
-    lastDisplaySignature = signature;
-    const options = (nextState.displays || []).map((display) => ({
-      value: String(display.captureNumber),
-      label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}${display.isPrimary ? ' · primary' : ''}`
-    }));
-    setSelectOptions($('source-display'), options, nextState.settings.sourceDisplayNumber);
-    const resultOptions = (nextState.displays || []).map((display) => ({
-      value: String(display.id),
-      label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}`
-    }));
-    setSelectOptions($('result-display'), resultOptions, nextState.settings.resultDisplayId);
+    if (signature !== lastDisplaySignature) {
+      lastDisplaySignature = signature;
+      const options = (nextState.displays || []).map((display) => ({
+        value: String(display.captureNumber),
+        label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}${display.isPrimary ? ' · primary' : ''}`
+      }));
+      setSelectOptions($('source-display'), options, nextState.settings.sourceDisplayNumber);
+      const resultOptions = (nextState.displays || []).map((display) => ({
+        value: String(display.id),
+        label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}`
+      }));
+      setSelectOptions($('result-display'), resultOptions, nextState.settings.resultDisplayId);
+      setSelectOptions($('voice-result-display'), resultOptions, nextState.settings.voiceResultDisplayId);
+    }
+    const voiceDisplay = $('voice-result-display');
+    if (voiceDisplay && document.activeElement !== voiceDisplay && nextState.settings.voiceResultDisplayId) {
+      voiceDisplay.value = String(nextState.settings.voiceResultDisplayId);
+    }
   }
 
   function applyTheme(theme) {
@@ -70,6 +80,9 @@
     setValue('result-font-size', settings.resultFontSizePx);
     setValue('result-layout', settings.resultLayout);
     setValue('theme', settings.theme);
+    if (force || document.activeElement !== $('voice-prompt')) setValue('voice-prompt', settings.voicePrompt);
+    setValue('voice-turn-detection', settings.voiceTurnDetection);
+    setValue('voice-transcription-delay', settings.voiceTranscriptionDelay);
     $('skip-unchanged').checked = Boolean(settings.skipUnchanged);
     $('result-autofit').checked = Boolean(settings.resultAutoFit);
     $('memory-enabled').checked = Boolean(settings.memoryEnabled);
@@ -99,7 +112,11 @@
       memoryMaxEntries: Math.max(0, Number($('memory-max').value || 0)),
       memoryContextAnswers: Math.max(0, Number($('memory-context').value || 0)),
       sourceDisplayNumber: Number($('source-display').value || 1),
-      resultDisplayId: $('result-display').value || ''
+      resultDisplayId: $('result-display').value || '',
+      voiceResultDisplayId: $('voice-result-display').value || '',
+      voicePrompt: $('voice-prompt').value,
+      voiceTurnDetection: $('voice-turn-detection').value,
+      voiceTranscriptionDelay: $('voice-transcription-delay').value
     };
   }
 
@@ -126,14 +143,134 @@
     element.className = `inline-status ${kind}`;
   }
 
+  function pcm16(samples) {
+    const output = new Int16Array(samples.length);
+    for (let index = 0; index < samples.length; index += 1) {
+      const value = Math.max(-1, Math.min(1, samples[index]));
+      output[index] = value < 0 ? value * 0x8000 : value * 0x7fff;
+    }
+    return output;
+  }
+
+  function resample(samples, sourceRate, targetRate = 24000) {
+    if (sourceRate === targetRate) return samples;
+    const outputLength = Math.max(1, Math.round(samples.length * targetRate / sourceRate));
+    const output = new Float32Array(outputLength);
+    const ratio = sourceRate / targetRate;
+    for (let index = 0; index < output.length; index += 1) {
+      const sourcePosition = Math.min(samples.length - 1, index * ratio);
+      const left = Math.floor(sourcePosition);
+      const right = Math.min(samples.length - 1, left + 1);
+      const fraction = sourcePosition - left;
+      output[index] = samples[left] + (samples[right] - samples[left]) * fraction;
+    }
+    return output;
+  }
+
+  async function stopVoiceCapture() {
+    voiceWanted = false;
+    voiceCaptureGeneration += 1;
+    const capture = voiceCapture;
+    voiceCapture = null;
+    if (capture) {
+      capture.processor.onaudioprocess = null;
+      capture.source.disconnect();
+      capture.processor.disconnect();
+      capture.silent.disconnect();
+      for (const track of capture.stream.getTracks()) track.stop();
+      await capture.audioContext.close().catch(() => {});
+    }
+    const stopSession = window.monitorApp?.voice?.stop;
+    if (stopSession) await stopSession().catch(() => {});
+  }
+
+  async function startVoiceCapture() {
+    if (voiceCapture) return;
+    if (voiceCapturePromise) return voiceCapturePromise;
+    voiceWanted = true;
+    const generation = ++voiceCaptureGeneration;
+    voiceCapturePromise = (async () => {
+      if (!window.monitorApp?.voice || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Microphone capture is not available in this app window.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      let audioContext;
+      let source;
+      let processor;
+      let silent;
+      try {
+        const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextImpl) throw new Error('This app window does not support microphone audio.');
+        audioContext = new AudioContextImpl({ sampleRate: 24000 });
+        await audioContext.resume();
+        if (generation !== voiceCaptureGeneration || !voiceWanted) {
+          for (const track of stream.getTracks()) track.stop();
+          await audioContext.close().catch(() => {});
+          return;
+        }
+        const session = await window.monitorApp.voice.start();
+        if (session?.error) throw new Error(session.error);
+        if (generation !== voiceCaptureGeneration || !voiceWanted) {
+          for (const track of stream.getTracks()) track.stop();
+          await audioContext.close().catch(() => {});
+          await window.monitorApp.voice.stop().catch(() => {});
+          return;
+        }
+        source = audioContext.createMediaStreamSource(stream);
+        if (!audioContext.createScriptProcessor) throw new Error('This app window does not support microphone processing.');
+        processor = audioContext.createScriptProcessor(2048, 1, 1);
+        silent = audioContext.createGain();
+        silent.gain.value = 0;
+        processor.onaudioprocess = (event) => {
+          const input = event.inputBuffer.getChannelData(0);
+          const ready = resample(input, audioContext.sampleRate);
+          window.monitorApp.voice.sendAudio(pcm16(ready).buffer);
+        };
+        source.connect(processor);
+        processor.connect(silent);
+        silent.connect(audioContext.destination);
+        voiceCapture = { stream, audioContext, source, processor, silent };
+      } catch (error) {
+        for (const track of stream.getTracks()) track.stop();
+        if (audioContext) await audioContext.close().catch(() => {});
+        await window.monitorApp.voice.stop().catch(() => {});
+        throw error;
+      }
+    })().finally(() => {
+      voiceCapturePromise = null;
+    });
+    return voiceCapturePromise;
+  }
+
+  async function toggleVoiceCapture() {
+    if (voiceCapture || voiceCapturePromise) {
+      await stopVoiceCapture();
+      return;
+    }
+    try {
+      await startVoiceCapture();
+      setControlStatus('Microphone listening. Page Down toggles it.', 'ready');
+    } catch (error) {
+      setControlStatus(error.message || 'Could not start the microphone.', 'error');
+    }
+  }
+
   function renderState(nextState) {
     state = nextState;
     renderDisplays(nextState);
     applySettings(nextState.settings);
     $('api-status').textContent = nextState.apiKeyReady ? '● API key ready' : '● API key not configured';
     $('api-status').classList.toggle('ready', nextState.apiKeyReady);
-    const hotkeys = nextState.hotkeys?.analysis?.length ? nextState.hotkeys.analysis.join(' · ') : 'No global hotkey registered';
-    $('hotkey-pill').textContent = hotkeys;
+    const analysisHotkeys = nextState.hotkeys?.analysis?.length ? nextState.hotkeys.analysis.join(' · ') : 'No screen hotkey';
+    const voiceHotkeys = nextState.hotkeys?.voice?.length ? nextState.hotkeys.voice.join(' · ') : 'No voice hotkey';
+    $('hotkey-pill').textContent = `${analysisHotkeys} · screen · ${voiceHotkeys} · voice`;
     const status = nextState.status || 'ready';
     $('output-status').textContent = status;
     $('output-status').className = `status-pill ${status === 'error' ? 'error' : status === 'analyzing' || status === 'capturing' ? 'analyzing' : 'ready'}`;
@@ -146,11 +283,28 @@
     $('last-trigger').textContent = nextState.lastTrigger || '—';
     const memory = nextState.memory || {};
     $('memory-count').textContent = `${memory.count || 0} memories${memory.screenshotSaved ? ' · screenshot saved' : ''}`;
-    $('voice-status').textContent = nextState.voice?.error
-      || (nextState.voice?.status === 'unavailable'
-        ? 'Voice capture unavailable'
-        : nextState.voice?.status === 'on' ? 'Microphone on' : 'Microphone off');
+    const voice = nextState.voice || {};
+    const voiceLabels = {
+      unavailable: 'Voice unavailable',
+      off: 'Microphone off',
+      connecting: 'Connecting…',
+      on: 'Microphone on',
+      speaking: 'Listening…',
+      transcribing: 'Transcribing…',
+      thinking: 'Answering…',
+      error: 'Voice error'
+    };
+    $('voice-status').textContent = voice.error || voiceLabels[voice.status] || 'Microphone off';
+    $('voice-status').className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
+    $('voice-enable').textContent = voice.enabled ? 'Stop listening' : 'Enable microphone';
+    $('voice-enable').disabled = !nextState.apiKeyReady || !window.monitorApp?.voice;
+    $('voice-hotkey').textContent = `${voiceHotkeys} · voice`;
     $('stop-monitoring').textContent = nextState.monitoring ? 'Stop monitoring' : 'Start monitoring';
+    if (voice.enabled && !voiceCapture && !voiceCapturePromise) {
+      void startVoiceCapture().catch((error) => setControlStatus(error.message || 'Could not start the microphone.', 'error'));
+    } else if (!voice.enabled && (voiceCapture || voiceCapturePromise)) {
+      void stopVoiceCapture();
+    }
   }
 
   async function poll() {
@@ -196,7 +350,7 @@
   }
 
   function bind() {
-    for (const id of ['prompt', 'model', 'custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display']) {
+    for (const id of ['prompt', 'model', 'custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'voice-result-display', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay']) {
       $(id).addEventListener('input', () => {
         if (id === 'model') $('custom-model-wrap').classList.toggle('hidden', $('model').value !== 'custom');
         if (id === 'theme') applyTheme($('theme').value);
@@ -212,6 +366,7 @@
         setControlStatus('Screenshot captured. Analyzing…');
       } catch (error) { setControlStatus(error.message, 'error'); }
     });
+    $('voice-enable').addEventListener('click', () => void toggleVoiceCapture());
     $('stop-monitoring').addEventListener('click', async () => {
       try {
         await post(state?.monitoring ? '/api/stop' : '/api/start');

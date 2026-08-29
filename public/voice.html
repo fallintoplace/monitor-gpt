@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Monitor GPT · Voice</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="result-page voice-result-page" data-theme="light">
+    <main class="result-shell voice-result-shell">
+      <header class="result-header">
+        <div>
+          <p class="eyebrow">MONITOR GPT <span class="orb" aria-hidden="true">◌</span></p>
+          <p class="eyebrow result-label">LIVE VOICE</p>
+          <p id="voice-updated" class="muted">Microphone off</p>
+        </div>
+        <div class="result-top-status">
+          <span id="voice-display" class="source-label">VOICE DISPLAY: —</span>
+          <span id="voice-result-status" class="status-pill"><span class="status-dot"></span> OFF</span>
+        </div>
+      </header>
+
+      <section class="voice-result-content">
+        <article class="voice-card">
+          <p class="eyebrow">HEARD</p>
+          <p id="voice-transcript" class="voice-transcript">Say a question and pause naturally.</p>
+        </article>
+        <article class="voice-card voice-answer-card">
+          <p class="eyebrow">ANSWER</p>
+          <div id="voice-answer" class="voice-answer">Your voice answer will appear here.</div>
+          <div id="voice-error" class="result-error hidden"></div>
+        </article>
+      </section>
+
+      <footer class="result-footer">
+        <span>VOICE LISTENING · PAGE DOWN TOGGLE</span>
+        <span id="voice-footer-status">MICROPHONE OFF</span>
+      </footer>
+    </main>
+    <script src="/markdown.js" defer></script>
+    <script src="/voice.js" defer></script>
+  </body>
+</html>

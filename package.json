@@ -12,7 +12,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "electron": "^43.4.0"

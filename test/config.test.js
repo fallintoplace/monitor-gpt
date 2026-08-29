@@ -15,6 +15,9 @@ test('should keep the remembered defaults when settings are missing', () => {
   assert.equal(settings.reasoning, 'medium');
   assert.equal(settings.resultLayout, 'five');
   assert.equal(settings.prompt, DEFAULT_PROMPT);
+  assert.equal(settings.voiceTurnDetection, 'semantic-auto');
+  assert.equal(settings.voiceTranscriptionDelay, 'low');
+  assert.ok(settings.voicePrompt.length > 0);
 });
 
 test('should normalize invalid settings without accepting unsupported values', () => {
@@ -39,5 +42,7 @@ test('should persist settings outside the renderer state shape', () => {
   assert.equal(saved.prompt, 'Keep this prompt');
   assert.equal(loaded.prompt, 'Keep this prompt');
   assert.equal(loaded.model, 'gpt-5.6-terra');
+  assert.equal(loaded.voiceResultDisplayId, '');
+  assert.equal(loaded.voiceTurnDetection, 'semantic-auto');
   assert.ok(fs.existsSync(path.join(directory, 'settings.json')));
 });

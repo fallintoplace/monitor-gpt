@@ -15,7 +15,7 @@
       </div>
       <div class="header-actions">
         <span id="api-status" class="status-pill">● API key not configured</span>
-        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A · Analyze</span>
+        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A / End · Analyze · PageDown · Voice</span>
       </div>
     </header>
 
@@ -92,7 +92,7 @@
               <option value="click-hotkeys">Click + global hotkeys</option>
               <option value="auto">Automatic polling</option>
             </select>
-            <small>Page Down, End, and the modifier shortcuts trigger analysis when registered.</small>
+            <small>End and the modifier shortcuts trigger screen analysis. Page Down controls voice listening.</small>
           </label>
         </div>
 
@@ -130,7 +130,7 @@
               <option value="columns">Three-column flow</option>
               <option value="five">Five-column workspace</option>
             </select>
-            <small>Code stays in one scrollable panel; prose can flow into occupied columns.</small>
+            <small>Long code flows across the available columns without an inner scrollbar.</small>
           </label>
           <label>
             <span>Appearance</span>
@@ -182,15 +182,49 @@
       <section class="panel voice-panel">
         <div class="section-heading compact-heading">
           <div>
-            <p class="eyebrow">VOICE MOMENT</p>
-            <h2>Capture the last few seconds</h2>
+            <p class="eyebrow">VOICE ANSWERS</p>
+            <h2>Listen for a spoken question</h2>
           </div>
-          <span id="voice-status" class="status-pill">Voice capture unavailable</span>
+          <span id="voice-status" class="status-pill">Microphone off</span>
         </div>
-        <p class="panel-description">Voice capture is not available in this build, so no voice shortcut is registered.</p>
+        <p id="voice-help" class="panel-description">Page Down toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screenshots are not sent with voice questions.</p>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Voice answer display</span>
+            <select id="voice-result-display"></select>
+            <small>Keep this separate from the screen-answer display when possible.</small>
+          </label>
+          <label>
+            <span>End detection</span>
+            <select id="voice-turn-detection">
+              <option value="semantic-auto">Semantic · natural</option>
+              <option value="semantic-low">Semantic · patient</option>
+              <option value="server">Silence · faster</option>
+            </select>
+            <small>Semantic detection waits for the meaning of the sentence to finish.</small>
+          </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Voice prompt</span>
+            <textarea id="voice-prompt" rows="3" spellcheck="true"></textarea>
+            <small>This prompt is separate from the screenshot prompt.</small>
+          </label>
+          <label>
+            <span>Transcription delay</span>
+            <select id="voice-transcription-delay">
+              <option value="minimal">Minimal · fastest</option>
+              <option value="low">Low · balanced</option>
+              <option value="medium">Medium · clearer</option>
+              <option value="high">High · more accurate</option>
+              <option value="xhigh">Xhigh · most accurate</option>
+            </select>
+            <small>Lower is faster; higher gives the transcript more time to settle.</small>
+          </label>
+        </div>
         <div class="action-row">
-          <button id="voice-enable" class="secondary-button" type="button" disabled>Enable microphone</button>
-          <button id="voice-analyze" class="primary-button" type="button" disabled>Analyze voice moment</button>
+          <button id="voice-enable" class="primary-button" type="button" disabled>Enable microphone</button>
+          <span id="voice-hotkey" class="inline-status">Page Down · voice</span>
         </div>
       </section>
 

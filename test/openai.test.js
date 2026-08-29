@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildResponsesPayload, extractResponseText, requestOpenAI } = require('../lib/openai');
+const { buildResponsesPayload, buildVoiceAnswerPayload, extractResponseText, requestOpenAI } = require('../lib/openai');
 
 test('should build an image Responses request with low-priority memory', () => {
   const payload = buildResponsesPayload({
@@ -20,6 +20,20 @@ test('should build an image Responses request with low-priority memory', () => {
 test('should extract text from Responses output items', () => {
   assert.equal(extractResponseText({ output_text: ' direct ' }), 'direct');
   assert.equal(extractResponseText({ output: [{ content: [{ type: 'output_text', text: 'hello' }] }] }), 'hello');
+});
+
+test('should build a separate text-only voice answer request', () => {
+  const payload = buildVoiceAnswerPayload({
+    settings: { model: 'gpt-5.6-luna', reasoning: 'medium', voicePrompt: 'Keep it short.' },
+    transcript: 'What is a mutex?'
+  });
+
+  assert.equal(payload.model, 'gpt-5.6-luna');
+  assert.deepEqual(payload.reasoning, { effort: 'medium' });
+  assert.equal(payload.store, false);
+  assert.match(payload.input[0].content[0].text, /What is a mutex\?/);
+  assert.equal(payload.input[0].content.some((part) => part.type === 'input_image'), false);
+  assert.match(payload.instructions, /Keep it short/);
 });
 
 test('should never include the API key in a request error', async () => {

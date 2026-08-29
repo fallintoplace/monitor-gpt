@@ -45,3 +45,13 @@ test('should store no entries when the local limit is zero', () => {
   memory.addAnalysis({ prompt: 'prompt', answer: 'answer' });
   assert.equal(memory.summary().count, 0);
 });
+
+test('should store voice text without attaching a screenshot', () => {
+  const memory = new LocalMemory(tempDirectory(), { maxEntries: 30 });
+  memory.addVoiceTranscript({ transcript: 'What is CORS?', prompt: 'Keep it short.', answer: 'It controls cross-origin requests.' });
+  const entry = memory.list()[0];
+  assert.equal(entry.kind, 'voice');
+  assert.equal(entry.transcript, 'What is CORS?');
+  assert.equal(entry.answer, 'It controls cross-origin requests.');
+  assert.equal(memory.summary().screenshotSaved, false);
+});

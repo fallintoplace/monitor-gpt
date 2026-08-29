@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, BrowserWindow, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const { captureDisplay } = require('./lib/capture');
 const { createLocalServer, listen } = require('./lib/server');
 const { loadSettings } = require('./lib/config');
@@ -10,13 +10,20 @@ const { LocalMemory } = require('./lib/memory');
 const { MonitorRunner } = require('./lib/runner');
 const { buildResponsesPayload, requestOpenAI } = require('./lib/openai');
 const { visibleWindowsOnDisplay } = require('./lib/window-capture');
+const { displayBoundsKey } = require('./lib/window-position');
+const { RealtimeVoiceSession } = require('./lib/voice-session');
 
 let controlWindow;
 let resultWindow;
+let voiceResultWindow;
 let localServer;
 let localPort;
 let runner;
 let registeredAccelerators = [];
+let positionedResultDisplayKey = null;
+let positionedVoiceResultDisplayKey = null;
+let voiceIpcRegistered = false;
+let voicePermissionConfigured = false;
 
 const publicDirectory = path.join(__dirname, 'public');
 
@@ -49,16 +56,38 @@ function displayForResult() {
   return runner?.findResultDisplay() || getDisplayList()[0] || null;
 }
 
+function displayForVoiceResult() {
+  return runner?.findVoiceResultDisplay() || getDisplayList()[0] || null;
+}
+
 function positionResultWindow() {
   if (!resultWindow || resultWindow.isDestroyed()) return;
   const display = displayForResult();
   if (!display) return;
+  const displayKey = displayBoundsKey(display);
+  if (displayKey === positionedResultDisplayKey) return;
   resultWindow.setBounds({
     x: display.bounds.x,
     y: display.bounds.y,
     width: display.bounds.width,
     height: display.bounds.height
   }, false);
+  positionedResultDisplayKey = displayKey;
+}
+
+function positionVoiceResultWindow() {
+  if (!voiceResultWindow || voiceResultWindow.isDestroyed()) return;
+  const display = displayForVoiceResult();
+  if (!display) return;
+  const displayKey = displayBoundsKey(display);
+  if (displayKey === positionedVoiceResultDisplayKey) return;
+  voiceResultWindow.setBounds({
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height
+  }, false);
+  positionedVoiceResultDisplayKey = displayKey;
 }
 
 function restoreWindow(window, shouldShow) {
@@ -69,7 +98,7 @@ function restoreWindow(window, shouldShow) {
 async function captureWithoutAppWindows({ displayNumber, maxImageWidth }) {
   const sourceDisplay = getDisplayList().find((display) => display.captureNumber === displayNumber);
   const hiddenWindows = visibleWindowsOnDisplay(
-    [controlWindow, resultWindow],
+    [controlWindow, resultWindow, voiceResultWindow],
     sourceDisplay?.id,
     (bounds) => screen.getDisplayMatching(bounds)
   );
@@ -80,6 +109,41 @@ async function captureWithoutAppWindows({ displayNumber, maxImageWidth }) {
   } finally {
     for (const window of hiddenWindows) restoreWindow(window, true);
   }
+}
+
+function audioBufferFromIpc(value) {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof ArrayBuffer) return Buffer.from(value);
+  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  return null;
+}
+
+function registerVoiceIpc() {
+  if (voiceIpcRegistered) return;
+  voiceIpcRegistered = true;
+  ipcMain.handle('voice:start', () => runner?.startVoice() || { accepted: false, error: 'The app is still starting.' });
+  ipcMain.handle('voice:stop', () => runner?.stopVoice() || { accepted: false, error: 'The app is still starting.' });
+  ipcMain.on('voice:audio', (_event, value) => {
+    const audio = audioBufferFromIpc(value);
+    if (audio) runner?.sendVoiceAudio(audio);
+  });
+}
+
+function configureMicrophonePermissions(window) {
+  if (voicePermissionConfigured || !window) return;
+  const localOrigin = `http://127.0.0.1:${localPort}`;
+  const windowSession = window.webContents.session;
+  const isLocalApp = (webContents, requestingOrigin = '') => {
+    const origin = requestingOrigin || webContents?.getURL?.() || '';
+    return origin.startsWith(localOrigin);
+  };
+  windowSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => (
+    permission === 'media' && isLocalApp(webContents, requestingOrigin)
+  ));
+  windowSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'media' && isLocalApp(webContents));
+  });
+  voicePermissionConfigured = true;
 }
 
 function createWindow(options) {
@@ -100,12 +164,14 @@ function createWindow(options) {
 }
 
 function registerGlobalShortcuts() {
+  for (const accelerator of registeredAccelerators) globalShortcut.unregister(accelerator);
+  registeredAccelerators = [];
   const analysis = [
     'Command+Shift+A',
     'Control+Shift+A',
-    'PageDown',
     'End'
   ];
+  const voice = ['PageDown'];
   const registeredAnalysis = [];
   for (const accelerator of analysis) {
     try {
@@ -118,7 +184,19 @@ function registerGlobalShortcuts() {
     }
   }
 
-  runner.setHotkeys({ analysis: registeredAnalysis, voice: [] });
+  const registeredVoice = [];
+  for (const accelerator of voice) {
+    try {
+      if (globalShortcut.register(accelerator, () => void runner.toggleVoice())) {
+        registeredVoice.push(accelerator);
+        registeredAccelerators.push(accelerator);
+      }
+    } catch (error) {
+      console.warn(`Could not register ${accelerator}:`, error.message);
+    }
+  }
+
+  runner.setHotkeys({ analysis: registeredAnalysis, voice: registeredVoice });
 }
 
 async function startApp() {
@@ -137,6 +215,11 @@ async function startApp() {
       payload
     })
   });
+  runner.setVoiceSession(new RealtimeVoiceSession({
+    apiKey: process.env.OPENAI_API_KEY,
+    onEvent: (event) => runner.handleVoiceEvent(event),
+    onError: (error) => runner.handleVoiceError(error)
+  }));
 
   runner.setDisplays(getDisplayList());
   localServer = createLocalServer({ runner, publicDirectory, memory });
@@ -144,15 +227,22 @@ async function startApp() {
 
   controlWindow = createWindow({ width: 1280, height: 980, title: 'Monitor GPT' });
   resultWindow = createWindow({ width: 1280, height: 800, title: 'Monitor GPT · Result' });
+  voiceResultWindow = createWindow({ width: 1280, height: 800, title: 'Monitor GPT · Voice' });
+  configureMicrophonePermissions(controlWindow);
   await controlWindow.loadURL(`http://127.0.0.1:${localPort}/`);
   await resultWindow.loadURL(`http://127.0.0.1:${localPort}/result`);
+  await voiceResultWindow.loadURL(`http://127.0.0.1:${localPort}/voice`);
   positionResultWindow();
+  positionVoiceResultWindow();
   controlWindow.show();
   resultWindow.showInactive();
+  voiceResultWindow.showInactive();
 
   runner.subscribe((snapshot) => {
     if (snapshot.settings.resultDisplayId) positionResultWindow();
+    if (snapshot.settings.voiceResultDisplayId) positionVoiceResultWindow();
   });
+  registerVoiceIpc();
   registerGlobalShortcuts();
   runner.start();
 }

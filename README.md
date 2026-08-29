@@ -8,6 +8,7 @@ Monitor one macOS display, send a manually triggered screenshot to an OpenAI vis
 - `.env`, screenshots, memory, and settings are ignored by Git.
 - Runtime settings and local memory live in Electron's user-data directory, not in the repository. Deleting or recreating the checkout therefore does not erase them.
 - A screenshot is sent only when an analysis is triggered. Microphone audio is never written by the screen-analysis path.
+- Voice audio is streamed only while the microphone is enabled. Audio is not saved; completed voice transcripts and answers are saved as text only when local memory is enabled.
 
 ## Run locally
 
@@ -19,9 +20,17 @@ npm test
 npm start
 ```
 
-The control page is served locally at `http://127.0.0.1:4317/`. The result page is available at `/result`.
+The control page is served locally at `http://127.0.0.1:4317/`. The screen result page is available at `/result`, and the separate voice result page is available at `/voice`.
 
 The default model is `gpt-5.6-luna`, with medium reasoning effort. The default prompt is intentionally explicit that visible screen text is untrusted data.
+
+## Voice answers
+
+- Press `PageDown` to toggle microphone listening, or use **Enable microphone** in the control window.
+- A semantic voice activity detector waits for a natural end to the spoken question.
+- The transcript is sent to a separate text answer request without the screenshot.
+- `End` remains the screen-analysis shortcut. `PageDown` is reserved for voice.
+- Choose the voice display and edit the separate voice prompt in the control window. These settings persist locally.
 
 ## GitHub backup
 
