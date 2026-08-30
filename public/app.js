@@ -482,9 +482,12 @@
       auto: 'Screen analysis runs automatically at the interval below. Home and Page Up control voice listening.'
     };
     $('trigger-mode-help').textContent = triggerModeHelp[nextState.settings.triggerMode] || triggerModeHelp.click;
+    const voiceAnswerHelp = nextState.settings.voiceMemoryEnabled
+      ? 'A natural pause ends the sentence, then one memory-backed voice answer uses the configured earlier turns.'
+      : 'A natural pause ends the sentence, then one baseline voice answer uses only the current question.';
     $('voice-help').textContent = nextState.settings.voiceScreenContextEnabled
-      ? 'Home or Page Up toggles the microphone. A natural pause ends the sentence, then separate voice and combined answers appear. End and Page Down refresh the screen context used by the combined answer.'
-      : 'Home or Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screen context is off, so voice questions stay text-only.';
+      ? `Home or Page Up toggles the microphone. ${voiceAnswerHelp} End and Page Down refresh the screen context used by the separate combined answer.`
+      : `Home or Page Up toggles the microphone. ${voiceAnswerHelp} Screen context is off, so voice questions stay text-only.`;
     const status = nextState.status || 'ready';
     $('output-status').textContent = status;
     $('output-status').className = `status-pill ${status === 'error' ? 'error' : status === 'analyzing' || status === 'capturing' ? 'analyzing' : 'ready'}`;

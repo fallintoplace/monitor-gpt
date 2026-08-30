@@ -13,7 +13,13 @@ function makeRunner(options = {}) {
   let calls = 0;
   const runner = new MonitorRunner({
     dataDirectory,
-    settings: { ...DEFAULT_SETTINGS, sourceDisplayNumber: 1, skipUnchanged: true, voiceScreenContextEnabled: false },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      sourceDisplayNumber: 1,
+      skipUnchanged: true,
+      voiceScreenContextEnabled: false,
+      ...(options.settings || {})
+    },
     memory,
     capture: options.capture || (async () => ({ buffer: Buffer.from(options.image || 'same image') })),
     logger: { error: () => {} },
@@ -248,6 +254,7 @@ test('should route a completed voice transcript to a text-only answer', async ()
   let voicePayload;
   let memoryPayload;
   const { runner } = makeRunner({
+    settings: { voiceMemoryEnabled: false },
     requestOpenAI: async ({ payload, channel }) => {
       if (channel === 'voice') {
         voicePayload = payload;
@@ -276,22 +283,21 @@ test('should route a completed voice transcript to a text-only answer', async ()
   assert.equal(runner.snapshot().voice.transcript, 'What is a mutex?');
   assert.equal(runner.snapshot().voice.history.length, 1);
   assert.equal(runner.snapshot().voice.history[0].transcript, 'What is a mutex?');
-  assert.equal(runner.snapshot().voiceMemory.answer, 'screen answer');
-  assert.equal(runner.snapshot().voiceMemory.history.length, 1);
+  assert.equal(runner.snapshot().voiceMemory.status, 'disabled');
+  assert.equal(runner.snapshot().voiceMemory.history.length, 0);
   assert.equal(voicePayload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.match(voicePayload.input[0].content[0].text, /What is a mutex/);
-  assert.equal(memoryPayload.input[0].content.some((part) => part.type === 'input_image'), false);
+  assert.equal(memoryPayload, undefined);
 });
 
-test('should show the baseline voice answer before voice memory finishes', async () => {
-  let releaseMemory;
-  const pendingMemory = new Promise((resolve) => {
-    releaseMemory = resolve;
-  });
-  const { runner, memory } = makeRunner({
-    requestOpenAI: async ({ channel }) => channel === 'voice-memory'
-      ? pendingMemory
-      : { text: 'baseline answer' }
+test('should use one memory request as the primary voice answer', async () => {
+  let memoryPayload;
+  const { runner, memory, getCalls } = makeRunner({
+    requestOpenAI: async ({ payload, channel }) => {
+      assert.equal(channel, 'voice-memory');
+      memoryPayload = payload;
+      return { text: 'memory answer' };
+    }
   });
   const voiceSession = {
     start: async () => ({ connected: true }),
@@ -308,21 +314,18 @@ test('should show the baseline voice answer before voice memory finishes', async
   });
   await flushPromises();
 
-  assert.equal(runner.snapshot().voice.answer, 'baseline answer');
-  assert.equal(runner.snapshot().voice.history.length, 1);
-  assert.equal(runner.snapshot().voiceMemory.status, 'translating');
-  assert.equal(runner.snapshot().voiceMemory.history.length, 0);
-
-  releaseMemory({ text: 'memory answer' });
-  await new Promise((resolve) => setTimeout(resolve, 10));
-
   const state = runner.snapshot();
+  assert.equal(getCalls(), 1);
+  assert.equal(state.voice.answer, '');
+  assert.equal(state.voice.history.length, 0);
   assert.equal(state.voiceMemory.answer, 'memory answer');
   assert.equal(state.voiceMemory.status, 'on');
   assert.equal(state.voiceMemory.history.length, 1);
   assert.equal(memory.list().length, 1);
-  assert.equal(memory.list()[0].id, state.voice.history[0].id);
   assert.equal(memory.list()[0].id, state.voiceMemory.history[0].id);
+  assert.equal(memory.list()[0].answer, '');
+  assert.equal(memory.list()[0].memoryAnswer, 'memory answer');
+  assert.equal(memoryPayload.input[0].content.some((part) => part.type === 'input_image'), false);
 });
 
 test('should keep the baseline voice answer while creating a screen-context answer', async () => {
@@ -400,8 +403,8 @@ test('should answer voice questions with and without the previous five turns', a
   const { runner, memory } = makeRunner({
     requestOpenAI: async ({ payload, channel }) => {
       calls.push({ payload, channel });
-      if (channel === 'voice') return { text: `baseline answer ${++answerNumber}` };
-      return { text: `memory answer ${answerNumber}` };
+      if (channel === 'voice-memory') return { text: `memory answer ${++answerNumber}` };
+      return { text: 'unused' };
     }
   });
   const voiceSession = {
@@ -427,16 +430,14 @@ test('should answer voice questions with and without the previous five turns', a
   await new Promise((resolve) => setTimeout(resolve, 10));
 
   const state = runner.snapshot();
-  assert.equal(calls.filter((call) => call.channel === 'voice').length, 2);
   assert.equal(calls.filter((call) => call.channel === 'voice-memory').length, 2);
-  assert.deepEqual(state.voice.history.map((entry) => entry.answer), ['baseline answer 1', 'baseline answer 2']);
   assert.deepEqual(state.voiceMemory.history.map((entry) => entry.answer), ['memory answer 1', 'memory answer 2']);
   const secondMemoryCall = calls
     .filter((call) => call.channel === 'voice-memory')
     .at(-1);
   const memoryText = secondMemoryCall.payload.input[0].content.map((part) => part.text || '').join('\n');
   assert.match(memoryText, /What is CORS/);
-  assert.match(memoryText, /baseline answer 1/);
+  assert.match(memoryText, /memory answer 1/);
   assert.match(memoryText, /What is idempotency/);
   assert.equal(secondMemoryCall.payload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.equal(memory.list().filter((entry) => entry.kind === 'voice').length, 2);
@@ -466,11 +467,11 @@ test('should keep the baseline voice window when voice memory comparison is disa
   assert.equal(runner.snapshot().voiceMemory.status, 'disabled');
 });
 
-test('should show a memory-window error without hiding a successful baseline answer', async () => {
+test('should show a memory-window error without changing the baseline window', async () => {
   const { runner } = makeRunner({
     requestOpenAI: async ({ channel }) => {
-      if (channel === 'voice-memory') throw new Error('memory request failed');
-      return { text: 'baseline answer' };
+      assert.equal(channel, 'voice-memory');
+      throw new Error('memory request failed');
     }
   });
   const voiceSession = {
@@ -488,7 +489,7 @@ test('should show a memory-window error without hiding a successful baseline ans
   });
   await new Promise((resolve) => setTimeout(resolve, 10));
 
-  assert.equal(runner.snapshot().voice.answer, 'baseline answer');
+  assert.equal(runner.snapshot().voice.answer, '');
   assert.equal(runner.snapshot().voice.error, '');
   assert.match(runner.snapshot().voiceMemory.error, /memory request failed/);
 });
@@ -499,6 +500,7 @@ test('should show translating while a voice answer is pending', async () => {
     releaseAnswer = resolve;
   });
   const { runner } = makeRunner({
+    settings: { voiceMemoryEnabled: false },
     requestOpenAI: async ({ channel }) => channel === 'voice' ? pendingAnswer : { text: 'screen answer' }
   });
   const voiceSession = {
@@ -640,6 +642,7 @@ test('should only commit a voice buffer after audio was sent', async () => {
 
 test('should wait for a committed voice transcript before stopping', async () => {
   const { runner } = makeRunner({
+    settings: { voiceMemoryEnabled: false },
     requestOpenAI: async () => ({ text: 'A mutex protects a critical section.' })
   });
   let commits = 0;

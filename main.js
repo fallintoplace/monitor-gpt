@@ -328,6 +328,19 @@ function positionVoiceResultWindow() {
   positionedVoiceResultDisplayKey = displayKey;
 }
 
+function syncVoiceWindowVisibility(settings = runner?.snapshot?.().settings) {
+  if (!settings) return;
+  const useMemory = Boolean(settings.voiceMemoryEnabled);
+  if (voiceResultWindow && !voiceResultWindow.isDestroyed()) {
+    if (useMemory) voiceResultWindow.hide();
+    else voiceResultWindow.showInactive();
+  }
+  if (voiceMemoryResultWindow && !voiceMemoryResultWindow.isDestroyed()) {
+    if (useMemory) voiceMemoryResultWindow.showInactive();
+    else voiceMemoryResultWindow.hide();
+  }
+}
+
 function voiceTileBounds(display) {
   const target = numericDisplayBounds(display);
   const gap = 12;
@@ -658,6 +671,7 @@ function subscribeToRunner() {
     positionVoiceResultWindow();
     positionVoiceMemoryResultWindow();
     positionCombinedResultWindow();
+    syncVoiceWindowVisibility(snapshot.settings);
     if (snapshot.settings.previousResultDisplayId === 'off') previousResultWindow?.hide();
   });
 }
@@ -776,9 +790,8 @@ async function ensureWindows() {
     positionCombinedResultWindow();
     controlWindow?.show();
     resultWindow?.showInactive();
-    voiceResultWindow?.showInactive();
-    voiceMemoryResultWindow?.showInactive();
     combinedResultWindow?.showInactive();
+    syncVoiceWindowVisibility(runner?.snapshot?.().settings);
     positionPreviousResultWindow();
   })().finally(() => {
     windowsStartPromise = null;
