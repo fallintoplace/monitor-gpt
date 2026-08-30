@@ -50,6 +50,7 @@ let shuttingDown = false;
 let windowStateDirectory;
 let persistedWindowState = {};
 let windowStateSaveTimer = null;
+const VOICE_ANSWER_TIMEOUT_MS = 30000;
 
 const publicDirectory = path.join(__dirname, 'public');
 
@@ -686,9 +687,10 @@ async function startBackend() {
       capture: captureWithoutAppWindows,
       getDisplays: getDisplayList,
       apiKeyReady: Boolean(process.env.OPENAI_API_KEY),
-      requestOpenAI: async ({ payload }) => requestOpenAI({
+      requestOpenAI: async ({ payload, channel }) => requestOpenAI({
         apiKey: process.env.OPENAI_API_KEY,
-        payload
+        payload,
+        timeoutMs: channel ? VOICE_ANSWER_TIMEOUT_MS : undefined
       })
     });
     startingRunner = nextRunner;

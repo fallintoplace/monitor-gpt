@@ -283,6 +283,48 @@ test('should route a completed voice transcript to a text-only answer', async ()
   assert.equal(memoryPayload.input[0].content.some((part) => part.type === 'input_image'), false);
 });
 
+test('should show the baseline voice answer before voice memory finishes', async () => {
+  let releaseMemory;
+  const pendingMemory = new Promise((resolve) => {
+    releaseMemory = resolve;
+  });
+  const { runner, memory } = makeRunner({
+    requestOpenAI: async ({ channel }) => channel === 'voice-memory'
+      ? pendingMemory
+      : { text: 'baseline answer' }
+  });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-independent',
+    transcript: 'What is a webhook?'
+  });
+  await flushPromises();
+
+  assert.equal(runner.snapshot().voice.answer, 'baseline answer');
+  assert.equal(runner.snapshot().voice.history.length, 1);
+  assert.equal(runner.snapshot().voiceMemory.status, 'translating');
+  assert.equal(runner.snapshot().voiceMemory.history.length, 0);
+
+  releaseMemory({ text: 'memory answer' });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const state = runner.snapshot();
+  assert.equal(state.voiceMemory.answer, 'memory answer');
+  assert.equal(state.voiceMemory.status, 'on');
+  assert.equal(state.voiceMemory.history.length, 1);
+  assert.equal(memory.list().length, 1);
+  assert.equal(memory.list()[0].id, state.voice.history[0].id);
+  assert.equal(memory.list()[0].id, state.voiceMemory.history[0].id);
+});
+
 test('should keep the baseline voice answer while creating a screen-context answer', async () => {
   let captured;
   const calls = [];

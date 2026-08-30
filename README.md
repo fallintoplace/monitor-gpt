@@ -34,6 +34,7 @@ The default screen and voice answer model is `gpt-5.6-luna`, with medium reasoni
 - Choose the voice display and edit the separate voice prompt in the control window. These settings persist locally.
 - Voice result windows show the newest completed answer first; older answers remain below it.
 - The baseline voice window answers from the current question only. The optional voice-memory window makes a second call using the configured number of earlier voice turns (five by default).
+- Voice answer requests time out after 30 seconds and show an error instead of staying pending forever.
 - The combined window makes a separate call with the spoken question and a fresh capture of the selected source display. It is enabled by default; use **Use current screen context** in the control window to turn it off. Every `End` or `PageDown` screen capture also refreshes the combined window's screen-context metadata without creating another answer.
 - The baseline voice and voice-memory calls remain text-only, so enabling combined context does not change those answers.
 

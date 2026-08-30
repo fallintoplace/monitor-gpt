@@ -505,7 +505,7 @@
       on: 'Microphone on',
       speaking: 'Listening…',
       transcribing: 'Transcribing…',
-      translating: 'Translating…',
+      translating: 'Answering…',
       thinking: 'Answering…',
       error: 'Voice error'
     };

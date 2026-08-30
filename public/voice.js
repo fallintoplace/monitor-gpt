@@ -24,7 +24,7 @@
       on: 'READY',
       speaking: 'LISTENING',
       transcribing: 'TRANSCRIBING',
-      translating: 'TRANSLATING',
+      translating: 'ANSWERING',
       capturing: 'CAPTURING SCREEN',
       thinking: 'ANSWERING',
       error: 'ERROR'
@@ -164,7 +164,7 @@
     const screenContext = voice.screenContext || {};
     const updated = combinedView
       ? screenContext.captureAt || voice.completedAt || voice.updatedAt
-      : voice.completedAt || voice.updatedAt;
+      : voice.updatedAt || voice.completedAt;
     $('voice-updated').textContent = updated
       ? `Updated ${new Date(updated).toLocaleTimeString()}`
       : combinedView && !state.settings?.voiceScreenContextEnabled ? 'Screen context off' : 'Microphone off';
