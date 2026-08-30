@@ -48,7 +48,7 @@ test('should normalize invalid settings without accepting unsupported values', (
   assert.equal(settings.screenAnswerLanguage, 'English');
   assert.equal(settings.voiceAnswerLanguage.length, 80);
   assert.equal(settings.voiceMemoryContextAnswers, DEFAULT_SETTINGS.voiceMemoryContextAnswers);
-  assert.equal(settings.voiceScreenContextEnabled, false);
+  assert.equal(settings.voiceScreenContextEnabled, true);
 });
 
 test('should persist settings outside the renderer state shape', () => {

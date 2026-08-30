@@ -13,7 +13,7 @@ function makeRunner(options = {}) {
   let calls = 0;
   const runner = new MonitorRunner({
     dataDirectory,
-    settings: { ...DEFAULT_SETTINGS, sourceDisplayNumber: 1, skipUnchanged: true },
+    settings: { ...DEFAULT_SETTINGS, sourceDisplayNumber: 1, skipUnchanged: true, voiceScreenContextEnabled: false },
     memory,
     capture: options.capture || (async () => ({ buffer: Buffer.from(options.image || 'same image') })),
     logger: { error: () => {} },

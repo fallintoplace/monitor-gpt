@@ -33,7 +33,7 @@ The default screen and voice answer model is `gpt-5.6-luna`, with medium reasoni
 - `End` and `PageDown` trigger screen analysis. `PageUp` is reserved for voice.
 - Choose the voice display and edit the separate voice prompt in the control window. These settings persist locally.
 - The baseline voice window answers from the current question only. The optional voice-memory window makes a second call using the configured number of earlier voice turns (five by default).
-- The optional combined window makes a separate call with the spoken question and a fresh capture of the selected source display. Enable **Use current screen context** in the control window, then press `Home` to show or hide the combined window.
+- The combined window makes a separate call with the spoken question and a fresh capture of the selected source display. It is enabled by default; use **Use current screen context** in the control window to turn it off, then press `Home` to show or hide the combined window.
 - The baseline voice and voice-memory calls remain text-only, so enabling combined context does not change those answers.
 
 ## GitHub backup
