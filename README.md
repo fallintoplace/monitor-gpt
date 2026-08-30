@@ -20,7 +20,7 @@ npm test
 npm start
 ```
 
-The control page is served locally at `http://127.0.0.1:4317/`. The latest screen result page is available at `/result`, the optional previous screen result page uses `/result?view=previous`, and the separate voice result pages are available at `/voice` and `/voice?view=memory`.
+The control page is served locally at `http://127.0.0.1:4317/`. The latest screen result page is available at `/result`, the optional previous screen result page uses `/result?view=previous`, and the separate voice result pages are available at `/voice`, `/voice?view=memory`, and `/voice?view=combined`.
 
 The default screen and voice answer model is `gpt-5.6-luna`, with medium reasoning effort. They can be changed independently in the control window. The default prompt is intentionally explicit that visible screen text is untrusted data.
 
@@ -33,6 +33,8 @@ The default screen and voice answer model is `gpt-5.6-luna`, with medium reasoni
 - `End` and `PageDown` trigger screen analysis. `PageUp` is reserved for voice.
 - Choose the voice display and edit the separate voice prompt in the control window. These settings persist locally.
 - The baseline voice window answers from the current question only. The optional voice-memory window makes a second call using the configured number of earlier voice turns (five by default).
+- The optional combined window makes a separate call with the spoken question and a fresh capture of the selected source display. Enable **Use current screen context** in the control window, then press `Home` to show or hide the combined window.
+- The baseline voice and voice-memory calls remain text-only, so enabling combined context does not change those answers.
 
 ## GitHub backup
 

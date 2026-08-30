@@ -2,8 +2,10 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const memoryView = new URLSearchParams(window.location.search).get('view') === 'memory';
-  const voiceStateKey = memoryView ? 'voiceMemory' : 'voice';
+  const view = new URLSearchParams(window.location.search).get('view');
+  const memoryView = view === 'memory';
+  const combinedView = view === 'combined';
+  const voiceStateKey = combinedView ? 'combined' : memoryView ? 'voiceMemory' : 'voice';
   let lastAnswer = null;
   let lastTheme = null;
   let lastTranscript = null;
@@ -23,6 +25,7 @@
       speaking: 'LISTENING',
       transcribing: 'TRANSCRIBING',
       translating: 'TRANSLATING',
+      capturing: 'CAPTURING SCREEN',
       thinking: 'ANSWERING',
       error: 'ERROR'
     })[voice.status] || 'OFF';
@@ -57,7 +60,9 @@
     const loading = document.createElement('span');
     loading.className = 'voice-loading';
     const contextCount = Math.max(0, Number(settings?.voiceMemoryContextAnswers || 0));
-    loading.textContent = memoryView
+    loading.textContent = combinedView
+      ? 'Capturing the screen and preparing the answer'
+      : memoryView
       ? `Answering with the last ${contextCount} voice turn${contextCount === 1 ? '' : 's'}`
       : 'Answering without voice memory';
     const dots = document.createElement('span');
@@ -75,7 +80,14 @@
   }
 
   function historySignature(history) {
-    return history.map((entry) => [entry.id || '', entry.createdAt || '', entry.transcript || '', entry.answer || ''].join('\u0002')).join('\u0001');
+    return history.map((entry) => [
+      entry.id || '',
+      entry.createdAt || '',
+      entry.transcript || '',
+      entry.answer || '',
+      entry.sourceLabel || '',
+      entry.captureAt || ''
+    ].join('\u0002')).join('\u0001');
   }
 
   function renderHistory(history) {
@@ -87,7 +99,18 @@
       const meta = document.createElement('div');
       meta.className = 'voice-turn-meta';
       const time = entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString() : '';
-      meta.textContent = ['Voice answer', time].filter(Boolean).join(' · ');
+      meta.textContent = [combinedView ? 'Combined answer' : 'Voice answer', time].filter(Boolean).join(' · ');
+
+      if (combinedView) {
+        const context = document.createElement('div');
+        context.className = 'voice-turn-context';
+        const captured = entry.captureAt ? new Date(entry.captureAt).toLocaleTimeString() : '';
+        context.textContent = [
+          `Screen context: ${entry.sourceLabel || 'Selected source display'}`,
+          captured ? `captured ${captured}` : ''
+        ].filter(Boolean).join(' · ');
+        article.appendChild(context);
+      }
 
       const heard = document.createElement('div');
       heard.className = 'voice-turn-part';
@@ -120,22 +143,43 @@
     window.__voicePollMs = state.settings?.resultPollMs || 1000;
     applyTheme(state.settings);
     applyVoiceFontSize(state.settings);
-    const viewLabel = memoryView
+    const viewLabel = combinedView
+      ? 'LIVE COMBINED · SCREEN + VOICE'
+      : memoryView
       ? `LIVE VOICE · LAST ${Math.max(0, Number(state.settings?.voiceMemoryContextAnswers || 0))}`
       : 'LIVE VOICE · NO MEMORY';
-    document.title = `Monitor GPT · ${memoryView ? 'Voice Memory' : 'Voice'}`;
+    document.title = `Monitor GPT · ${combinedView ? 'Combined' : memoryView ? 'Voice Memory' : 'Voice'}`;
     document.querySelector('.result-label').textContent = viewLabel;
-    $('voice-footer-mode').textContent = memoryView
+    $('voice-footer-mode').textContent = combinedView
+      ? 'COMBINED · HOME TOGGLE'
+      : memoryView
       ? 'VOICE MEMORY · PAGE UP TOGGLE'
       : 'VOICE · NO MEMORY · PAGE UP TOGGLE';
     const label = statusLabel(voice);
     const status = $('voice-result-status');
-    status.className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
+    status.className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'capturing', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
     status.innerHTML = `<span class="status-dot"></span> ${label}`;
-    $('voice-display').textContent = `VOICE DISPLAY: ${state.voiceResultDisplay?.label || '—'} · D${state.voiceResultDisplay?.captureNumber || '—'}`;
+    const display = combinedView ? state.combinedResultDisplay : state.voiceResultDisplay;
+    $('voice-display').textContent = `${combinedView ? 'COMBINED DISPLAY' : 'VOICE DISPLAY'}: ${display?.label || '—'} · D${display?.captureNumber || '—'}`;
     const updated = voice.completedAt || voice.updatedAt;
-    $('voice-updated').textContent = updated ? `Updated ${new Date(updated).toLocaleTimeString()}` : 'Microphone off';
+    $('voice-updated').textContent = updated
+      ? `Updated ${new Date(updated).toLocaleTimeString()}`
+      : combinedView && !state.settings?.voiceScreenContextEnabled ? 'Screen context off' : 'Microphone off';
     $('voice-footer-status').textContent = voice.error || label;
+
+    const context = $('voice-context');
+    if (combinedView) {
+      const captureTime = voice.captureAt ? new Date(voice.captureAt).toLocaleTimeString() : '';
+      context.textContent = state.settings?.voiceScreenContextEnabled
+        ? [
+          `SCREEN CONTEXT: ${voice.sourceLabel || state.sourceDisplay?.label || 'Selected source display'}`,
+          captureTime ? `captured ${captureTime}` : 'waiting for capture'
+        ].join(' · ')
+        : 'SCREEN CONTEXT OFF · Enable it in the control window to create a combined answer.';
+      context.classList.remove('hidden');
+    } else {
+      context.classList.add('hidden');
+    }
 
     const currentHistorySignature = historySignature(history);
     if (currentHistorySignature !== lastHistorySignature) {
@@ -158,14 +202,17 @@
 
     if (voice.transcript !== lastTranscript) {
       lastTranscript = voice.transcript || '';
-      $('voice-transcript').textContent = lastTranscript || 'Say a question and pause naturally.';
+      $('voice-transcript').textContent = lastTranscript || (combinedView
+        ? 'Ask about the current screen and pause naturally.'
+        : 'Say a question and pause naturally.');
     }
-    const liveAnswerState = voice.status === 'translating'
-      ? 'translating'
+    const loadingState = ['capturing', 'translating', 'thinking'].includes(voice.status);
+    const liveAnswerState = loadingState
+      ? voice.status
       : `answer:${voice.answer || ''}`;
     if (liveAnswerState !== lastLiveAnswerState) {
       lastLiveAnswerState = liveAnswerState;
-      if (voice.status === 'translating') renderTranslating(state.settings);
+      if (loadingState) renderTranslating(state.settings);
       else {
         lastAnswer = voice.answer || '';
         renderAnswer(lastAnswer);
@@ -173,7 +220,7 @@
     }
     const latest = history.at(-1);
     const liveIsLatest = Boolean(latest && latest.transcript === voice.transcript && latest.answer === voice.answer);
-    const liveActive = ['connecting', 'speaking', 'transcribing', 'translating', 'thinking'].includes(voice.status);
+    const liveActive = ['connecting', 'speaking', 'transcribing', 'capturing', 'translating', 'thinking'].includes(voice.status);
     $('voice-live').classList.toggle('hidden', Boolean(history.length && (!liveActive || liveIsLatest)));
     if (voice.error !== lastError) {
       lastError = voice.error || '';

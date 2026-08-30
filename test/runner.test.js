@@ -266,6 +266,75 @@ test('should route a completed voice transcript to a text-only answer', async ()
   assert.equal(memoryPayload.input[0].content.some((part) => part.type === 'input_image'), false);
 });
 
+test('should keep the baseline voice answer while creating a screen-context answer', async () => {
+  let captured;
+  const calls = [];
+  const { runner, memory } = makeRunner({
+    capture: async (options) => {
+      captured = options;
+      return { buffer: Buffer.from('combined image') };
+    },
+    requestOpenAI: async ({ payload, channel }) => {
+      calls.push({ payload, channel });
+      if (channel === 'voice-screen') return { text: 'combined answer' };
+      return { text: 'baseline answer' };
+    }
+  });
+  runner.updateSettings({ voiceMemoryEnabled: false, voiceScreenContextEnabled: true });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-combined',
+    transcript: 'Write tests for this exercise.'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const state = runner.snapshot();
+  const baselineCall = calls.find((call) => call.channel === 'voice');
+  const combinedCall = calls.find((call) => call.channel === 'voice-screen');
+  assert.equal(calls.length, 2);
+  assert.equal(state.voice.answer, 'baseline answer');
+  assert.equal(state.combined.answer, 'combined answer');
+  assert.equal(state.combined.sourceLabel, 'Main display');
+  assert.equal(state.combined.history.length, 1);
+  assert.equal(captured.displayId, 'display-1');
+  assert.equal(baselineCall.payload.input[0].content.some((part) => part.type === 'input_image'), false);
+  assert.equal(combinedCall.payload.input[0].content.at(-1).type, 'input_image');
+  assert.equal(memory.list()[0].combinedAnswer, 'combined answer');
+});
+
+test('should keep the baseline voice answer when the selected screen is unavailable', async () => {
+  const { runner } = makeRunner({
+    requestOpenAI: async ({ channel }) => ({ text: channel === 'voice' ? 'baseline answer' : 'unused' })
+  });
+  runner.updateSettings({ voiceMemoryEnabled: false, voiceScreenContextEnabled: true, sourceDisplayId: 'missing-display' });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-missing-screen',
+    transcript: 'What is CORS?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(runner.snapshot().voice.answer, 'baseline answer');
+  assert.match(runner.snapshot().combined.error, /No source display is available/);
+  assert.equal(runner.snapshot().combined.history.length, 0);
+});
+
 test('should answer voice questions with and without the previous five turns', async () => {
   const calls = [];
   let answerNumber = 0;
@@ -569,6 +638,20 @@ test('should choose a third display for voice answers when it is available', () 
   runner.updateSettings({ sourceDisplayNumber: 3, resultDisplayId: 'display-2' });
   runner.setDisplays(runner.snapshot().displays);
   assert.equal(runner.snapshot().voiceResultDisplay.id, 'display-1');
+});
+
+test('should choose an unused display for combined answers when available', () => {
+  const { runner } = makeRunner();
+  runner.setDisplays([
+    { id: 'display-1', captureNumber: 1, label: 'Main display', width: 100, height: 100 },
+    { id: 'display-2', captureNumber: 2, label: 'External display 1', width: 100, height: 100 },
+    { id: 'display-3', captureNumber: 3, label: 'External display 2', width: 100, height: 100 },
+    { id: 'display-4', captureNumber: 4, label: 'External display 3', width: 100, height: 100 }
+  ]);
+  runner.updateSettings({ sourceDisplayNumber: 1, resultDisplayId: 'display-2', voiceResultDisplayId: 'display-3' });
+  runner.setDisplays(runner.snapshot().displays);
+  assert.equal(runner.snapshot().settings.combinedResultDisplayId, 'auto');
+  assert.equal(runner.snapshot().combinedResultDisplay.id, 'display-4');
 });
 
 test('should choose an unused display for the previous screen answer', () => {

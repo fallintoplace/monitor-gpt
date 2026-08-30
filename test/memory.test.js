@@ -77,6 +77,25 @@ test('should store voice text without attaching a screenshot', () => {
   assert.equal(memory.summary().screenshotSaved, false);
 });
 
+test('should store combined voice answers with their screen metadata', () => {
+  const memory = new LocalMemory(tempDirectory(), { maxEntries: 30 });
+  memory.addVoiceTranscript({
+    transcript: 'Write tests for this.',
+    prompt: 'Keep it concise.',
+    answer: 'Voice-only answer.',
+    combinedAnswer: 'Answer using the current screen.',
+    combinedSourceDisplayNumber: 3,
+    combinedSourceLabel: 'External display 2',
+    combinedCaptureAt: '2026-08-30T12:00:00.000Z'
+  });
+
+  const entry = memory.list()[0];
+  assert.equal(entry.combinedAnswer, 'Answer using the current screen.');
+  assert.equal(entry.combinedSourceDisplayNumber, 3);
+  assert.equal(entry.combinedSourceLabel, 'External display 2');
+  assert.equal(entry.combinedCaptureAt, '2026-08-30T12:00:00.000Z');
+});
+
 test('should keep the state summary small while exposing all entries in details', () => {
   const memory = new LocalMemory(tempDirectory(), { maxEntries: 30 });
   for (let index = 0; index < 12; index += 1) {

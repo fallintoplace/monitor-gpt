@@ -27,6 +27,7 @@ let resultWindow;
 let previousResultWindow;
 let voiceResultWindow;
 let voiceMemoryResultWindow;
+let combinedResultWindow;
 let localServer;
 let localPort;
 let localApiToken;
@@ -39,6 +40,7 @@ let positionedResultDisplayKey = null;
 let positionedPreviousResultDisplayKey = null;
 let positionedVoiceResultDisplayKey = null;
 let positionedVoiceMemoryResultDisplayKey = null;
+let positionedCombinedResultDisplayKey = null;
 let voiceIpcRegistered = false;
 let voicePermissionConfigured = false;
 let localRequestHeadersConfigured = false;
@@ -86,6 +88,10 @@ function displayForPreviousResult() {
 
 function displayForVoiceResult() {
   return runner?.findVoiceResultDisplay() || getDisplayList()[0] || null;
+}
+
+function displayForCombinedResult() {
+  return runner?.findCombinedResultDisplay() || getDisplayList()[0] || null;
 }
 
 function normalBoundsForWindow(window) {
@@ -216,6 +222,7 @@ function flushWindowState() {
   rememberWindowBounds('previous', previousResultWindow);
   rememberWindowBounds('voice', voiceResultWindow);
   rememberWindowBounds('voice-memory', voiceMemoryResultWindow);
+  rememberWindowBounds('combined', combinedResultWindow);
 
   if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
   windowStateSaveTimer = null;
@@ -376,6 +383,36 @@ function positionVoiceMemoryResultWindow() {
   voiceMemoryResultWindow.showInactive();
 }
 
+function defaultCombinedResultBounds(display) {
+  const target = numericDisplayBounds(display);
+  if (!target) return null;
+  return clampBoundsToDisplay({
+    x: target.x + Math.round(target.width * 0.18),
+    y: target.y + Math.round(target.height * 0.14),
+    width: Math.round(target.width * 0.64),
+    height: Math.round(target.height * 0.72)
+  }, display);
+}
+
+function positionCombinedResultWindow() {
+  if (!combinedResultWindow || combinedResultWindow.isDestroyed()) return;
+  const display = displayForCombinedResult();
+  if (!display) return;
+  const displayKey = displayBoundsKey(display);
+  if (displayKey === positionedCombinedResultDisplayKey) return;
+
+  if (persistedWindowState.combined) {
+    positionWindowOnDisplay('combined', combinedResultWindow, display);
+  } else {
+    const bounds = defaultCombinedResultBounds(display);
+    if (bounds) {
+      combinedResultWindow.setBounds(bounds, false);
+      rememberWindowBounds('combined', combinedResultWindow, display.id, bounds);
+    }
+  }
+  positionedCombinedResultDisplayKey = displayKey;
+}
+
 function restoreWindow(window, shouldShow) {
   if (!window || window.isDestroyed() || !shouldShow) return;
   window.showInactive();
@@ -388,7 +425,7 @@ async function captureWithoutAppWindows({ displayId, displayNumber, maxImageWidt
     : displays.find((display) => display.captureNumber === displayNumber);
   if (!sourceDisplay) throw new Error('The selected source display is no longer available. Refresh the display list.');
   const hiddenWindows = visibleWindowsOnDisplay(
-    [controlWindow, resultWindow, previousResultWindow, voiceResultWindow, voiceMemoryResultWindow],
+    [controlWindow, resultWindow, previousResultWindow, voiceResultWindow, voiceMemoryResultWindow, combinedResultWindow],
     sourceDisplay?.id,
     (bounds) => screen.getDisplayMatching(bounds),
     sourceDisplay?.bounds
@@ -484,7 +521,8 @@ function windowForName(name) {
     result: resultWindow,
     previous: previousResultWindow,
     voice: voiceResultWindow,
-    'voice-memory': voiceMemoryResultWindow
+    'voice-memory': voiceMemoryResultWindow,
+    combined: combinedResultWindow
   }[name];
 }
 
@@ -505,6 +543,9 @@ function setWindowForName(name, window) {
     case 'voice-memory':
       voiceMemoryResultWindow = window;
       break;
+    case 'combined':
+      combinedResultWindow = window;
+      break;
     default:
       break;
   }
@@ -523,6 +564,9 @@ function clearPositionedDisplayKey(name) {
       break;
     case 'voice-memory':
       positionedVoiceMemoryResultDisplayKey = null;
+      break;
+    case 'combined':
+      positionedCombinedResultDisplayKey = null;
       break;
     default:
       break;
@@ -547,6 +591,7 @@ function registerGlobalShortcuts() {
     ] : [];
   registeredTriggerMode = runner?.snapshot?.().settings?.triggerMode || null;
   const voice = ['PageUp'];
+  const combined = ['Home'];
   const registeredAnalysis = [];
   for (const accelerator of analysis) {
     try {
@@ -574,7 +619,19 @@ function registerGlobalShortcuts() {
     }
   }
 
-  runner.setHotkeys({ analysis: registeredAnalysis, voice: registeredVoice });
+  const registeredCombined = [];
+  for (const accelerator of combined) {
+    try {
+      if (globalShortcut.register(accelerator, () => void toggleCombinedWindow())) {
+        registeredCombined.push(accelerator);
+        registeredAccelerators.push(accelerator);
+      }
+    } catch (error) {
+      console.warn(`Could not register ${accelerator}:`, error.message);
+    }
+  }
+
+  runner.setHotkeys({ analysis: registeredAnalysis, voice: registeredVoice, combined: registeredCombined });
 }
 
 function requestVoiceToggle() {
@@ -583,6 +640,22 @@ function requestVoiceToggle() {
     return;
   }
   if (runner?.snapshot?.().voice?.enabled) void runner.stopVoice({ graceful: false });
+}
+
+async function toggleCombinedWindow() {
+  try {
+    if (!combinedResultWindow || combinedResultWindow.isDestroyed()) await ensureWindows();
+    if (!combinedResultWindow || combinedResultWindow.isDestroyed()) return;
+    positionCombinedResultWindow();
+    if (combinedResultWindow.isVisible()) {
+      combinedResultWindow.hide();
+    } else {
+      combinedResultWindow.show();
+      combinedResultWindow.focus();
+    }
+  } catch (error) {
+    console.warn('Could not toggle combined window:', error.message);
+  }
 }
 
 function registerDisplayEvents() {
@@ -612,6 +685,7 @@ function subscribeToRunner() {
     positionPreviousResultWindow();
     positionVoiceResultWindow();
     positionVoiceMemoryResultWindow();
+    positionCombinedResultWindow();
     if (snapshot.settings.previousResultDisplayId === 'off') previousResultWindow?.hide();
   });
 }
@@ -631,6 +705,7 @@ async function startBackend() {
     positionedPreviousResultDisplayKey = null;
     positionedVoiceResultDisplayKey = null;
     positionedVoiceMemoryResultDisplayKey = null;
+    positionedCombinedResultDisplayKey = null;
     const settings = loadSettings(dataDirectory);
     const memory = new LocalMemory(dataDirectory, { maxEntries: settings.memoryMaxEntries });
     const nextRunner = new MonitorRunner({
@@ -718,16 +793,19 @@ async function ensureWindows() {
     await ensureWindow({ name: 'previous', options: { width: 1280, height: 800, title: 'Monitor GPT · Previous Result' }, route: '/result?view=previous' });
     await ensureWindow({ name: 'voice', options: { width: 1280, height: 800, title: 'Monitor GPT · Voice' }, route: '/voice' });
     await ensureWindow({ name: 'voice-memory', options: { width: 1280, height: 800, title: 'Monitor GPT · Voice Memory' }, route: '/voice?view=memory' });
+    await ensureWindow({ name: 'combined', options: { width: 1280, height: 800, title: 'Monitor GPT · Combined' }, route: '/voice?view=combined' });
 
     restoreControlWindow();
     positionResultWindow();
     positionPreviousResultWindow();
     positionVoiceResultWindow();
     positionVoiceMemoryResultWindow();
+    positionCombinedResultWindow();
     controlWindow?.show();
     resultWindow?.showInactive();
     voiceResultWindow?.showInactive();
     voiceMemoryResultWindow?.showInactive();
+    combinedResultWindow?.hide();
     positionPreviousResultWindow();
   })().finally(() => {
     windowsStartPromise = null;

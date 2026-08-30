@@ -71,6 +71,10 @@
         ...resultOptions
       ], nextState.settings.previousResultDisplayId);
       setSelectOptions($('voice-result-display'), resultOptions, nextState.settings.voiceResultDisplayId);
+      setSelectOptions($('combined-result-display'), [
+        { value: 'auto', label: 'Automatic · use an unused display' },
+        ...resultOptions
+      ], nextState.settings.combinedResultDisplayId);
     }
     const previousDisplay = $('previous-result-display');
     if (previousDisplay && document.activeElement !== previousDisplay) {
@@ -79,6 +83,10 @@
     const voiceDisplay = $('voice-result-display');
     if (voiceDisplay && document.activeElement !== voiceDisplay && nextState.settings.voiceResultDisplayId) {
       voiceDisplay.value = String(nextState.settings.voiceResultDisplayId);
+    }
+    const combinedDisplay = $('combined-result-display');
+    if (combinedDisplay && document.activeElement !== combinedDisplay && nextState.settings.combinedResultDisplayId) {
+      combinedDisplay.value = String(nextState.settings.combinedResultDisplayId);
     }
   }
 
@@ -150,6 +158,7 @@
     setValue('voice-answer-language', settings.voiceAnswerLanguage);
     $('voice-memory-enabled').checked = Boolean(settings.voiceMemoryEnabled);
     setValue('voice-memory-context', settings.voiceMemoryContextAnswers);
+    $('voice-screen-context-enabled').checked = Boolean(settings.voiceScreenContextEnabled);
     $('skip-unchanged').checked = Boolean(settings.skipUnchanged);
     $('result-autofit').checked = Boolean(settings.resultAutoFit);
     $('memory-enabled').checked = Boolean(settings.memoryEnabled);
@@ -186,12 +195,14 @@
       resultDisplayId: $('result-display').value || '',
       previousResultDisplayId: $('previous-result-display').value || '',
       voiceResultDisplayId: $('voice-result-display').value || '',
+      combinedResultDisplayId: $('combined-result-display').value || '',
       voicePrompt: $('voice-prompt').value,
       voiceTurnDetection: $('voice-turn-detection').value,
       voiceTranscriptionDelay: $('voice-transcription-delay').value,
       voiceAudioDeviceId: $('voice-audio-device').value || '',
       voiceFontSizePx: Math.max(10, Number($('voice-font-size').value || 16)),
       voiceAnswerLanguage: $('voice-answer-language').value,
+      voiceScreenContextEnabled: $('voice-screen-context-enabled').checked,
       voiceMemoryEnabled: $('voice-memory-enabled').checked,
       voiceMemoryContextAnswers: Math.max(0, Number($('voice-memory-context').value || 0))
     };
@@ -463,7 +474,8 @@
     $('api-status').classList.toggle('ready', nextState.apiKeyReady);
     const analysisHotkeys = nextState.hotkeys?.analysis?.length ? nextState.hotkeys.analysis.join(' · ') : 'No screen hotkey';
     const voiceHotkeys = nextState.hotkeys?.voice?.length ? nextState.hotkeys.voice.join(' · ') : 'No voice hotkey';
-    $('hotkey-pill').textContent = `${analysisHotkeys} · screen · ${voiceHotkeys} · voice`;
+    const combinedHotkeys = nextState.hotkeys?.combined?.length ? nextState.hotkeys.combined.join(' · ') : 'No combined hotkey';
+    $('hotkey-pill').textContent = `${analysisHotkeys} · screen · ${voiceHotkeys} · voice · ${combinedHotkeys} · combined`;
     const triggerModeHelp = {
       click: 'The Analyze button triggers screen analysis. Page Up controls voice listening.',
       hotkeys: 'Global screen hotkeys trigger analysis. The Analyze button remains available. Page Up controls voice listening.',
@@ -471,6 +483,9 @@
       auto: 'Screen analysis runs automatically at the interval below. Page Up controls voice listening.'
     };
     $('trigger-mode-help').textContent = triggerModeHelp[nextState.settings.triggerMode] || triggerModeHelp.click;
+    $('voice-help').textContent = nextState.settings.voiceScreenContextEnabled
+      ? 'Page Up toggles the microphone. A natural pause ends the sentence, then separate voice and combined answers appear. The combined answer includes a fresh screenshot from the selected source display.'
+      : 'Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screen context is off, so voice questions stay text-only.';
     const status = nextState.status || 'ready';
     $('output-status').textContent = status;
     $('output-status').className = `status-pill ${status === 'error' ? 'error' : status === 'analyzing' || status === 'capturing' ? 'analyzing' : 'ready'}`;
@@ -499,7 +514,7 @@
     $('voice-status').className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
     $('voice-enable').textContent = voice.enabled ? 'Stop listening' : 'Enable microphone';
     $('voice-enable').disabled = !nextState.apiKeyReady || !window.monitorApp?.voice;
-    $('voice-hotkey').textContent = `${voiceHotkeys} · voice`;
+    $('voice-hotkey').textContent = `${voiceHotkeys} · voice · ${combinedHotkeys} · combined`;
     $('stop-monitoring').textContent = nextState.monitoring ? 'Stop monitoring' : 'Start monitoring';
     if (voice.enabled && !voiceCapture && !voiceCapturePromise) {
       void startVoiceCapture().catch((error) => setControlStatus(error.message || 'Could not start the microphone.', 'error'));
@@ -551,7 +566,7 @@
   }
 
   function bind() {
-    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language', 'voice-memory-enabled', 'voice-memory-context']) {
+    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'combined-result-display', 'voice-screen-context-enabled', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language', 'voice-memory-enabled', 'voice-memory-context']) {
       $(id).addEventListener('input', () => {
         if (id === 'model') $('custom-model-wrap').classList.toggle('hidden', $('model').value !== 'custom');
         if (id === 'voice-model') $('voice-custom-model-wrap').classList.toggle('hidden', $('voice-model').value !== 'custom');

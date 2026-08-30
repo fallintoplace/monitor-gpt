@@ -204,7 +204,7 @@
           </div>
           <span id="voice-status" class="status-pill">Microphone off</span>
         </div>
-        <p id="voice-help" class="panel-description">Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screenshots are not sent with voice questions.</p>
+        <p id="voice-help" class="panel-description">Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screen context is off, so voice questions stay text-only.</p>
         <div class="form-grid two-up compact-grid">
           <label>
             <span>Voice answer model</span>
@@ -244,6 +244,14 @@
               <option value="semantic-low">Patient · longer pause</option>
             </select>
             <small>Detects a quiet pause locally before committing the question.</small>
+          </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label class="check-label"><input id="voice-screen-context-enabled" type="checkbox"><span>Use current screen context</span><small>Send a fresh screenshot with each completed voice question. This creates a separate combined answer.</small></label>
+          <label>
+            <span>Combined answer display</span>
+            <select id="combined-result-display"></select>
+            <small>Home toggles the separate combined answer window. This setting is independent from the voice display.</small>
           </label>
         </div>
         <div class="form-grid two-up compact-grid">

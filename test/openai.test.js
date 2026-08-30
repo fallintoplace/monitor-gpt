@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildResponsesPayload, buildVoiceAnswerPayload, extractResponseText, requestOpenAI } = require('../lib/openai');
+const { buildCombinedVoiceAnswerPayload, buildResponsesPayload, buildVoiceAnswerPayload, extractResponseText, requestOpenAI } = require('../lib/openai');
 
 test('should build an image Responses request with low-priority memory', () => {
   const payload = buildResponsesPayload({
@@ -56,6 +56,29 @@ test('should put low-priority voice memory before the current question', () => {
   assert.match(payload.input[0].content[1].text, /What is CORS/);
   assert.equal(payload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.match(payload.instructions, /low-priority reference only/);
+});
+
+test('should build a combined voice request with the current screen image', () => {
+  const payload = buildCombinedVoiceAnswerPayload({
+    settings: {
+      voiceModel: 'gpt-5.6-terra',
+      reasoning: 'high',
+      imageDetail: 'high',
+      voiceAnswerLanguage: 'English',
+      voicePrompt: 'Keep it interview-ready.'
+    },
+    transcript: 'Write tests for this exercise.',
+    imageBase64: 'screen-bytes'
+  });
+
+  assert.equal(payload.model, 'gpt-5.6-terra');
+  assert.deepEqual(payload.reasoning, { effort: 'high' });
+  assert.equal(payload.input[0].content.at(-1).type, 'input_image');
+  assert.equal(payload.input[0].content.at(-1).image_url, 'data:image/png;base64,screen-bytes');
+  assert.equal(payload.input[0].content.at(-1).detail, 'high');
+  assert.match(payload.input[0].content.at(-2).text, /Current screen context/);
+  assert.match(payload.instructions, /current screen image/);
+  assert.match(payload.instructions, /Answer in English only/);
 });
 
 test('should never include the API key in a request error', async () => {

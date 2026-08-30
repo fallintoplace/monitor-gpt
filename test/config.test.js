@@ -16,6 +16,7 @@ test('should keep the remembered defaults when settings are missing', () => {
   assert.equal(settings.reasoning, 'medium');
   assert.equal(settings.resultLayout, 'five');
   assert.equal(settings.previousResultDisplayId, 'auto');
+  assert.equal(settings.combinedResultDisplayId, 'auto');
   assert.equal(settings.prompt, DEFAULT_PROMPT);
   assert.equal(settings.screenAnswerLanguage, 'English');
   assert.equal(settings.voiceAnswerLanguage, 'English');
@@ -47,11 +48,12 @@ test('should normalize invalid settings without accepting unsupported values', (
   assert.equal(settings.screenAnswerLanguage, 'English');
   assert.equal(settings.voiceAnswerLanguage.length, 80);
   assert.equal(settings.voiceMemoryContextAnswers, DEFAULT_SETTINGS.voiceMemoryContextAnswers);
+  assert.equal(settings.voiceScreenContextEnabled, false);
 });
 
 test('should persist settings outside the renderer state shape', () => {
   const directory = tempDirectory();
-  const saved = saveSettings(directory, { prompt: 'Keep this prompt', model: 'gpt-5.6-terra', voiceModel: 'gpt-5.6-sol', voiceCustomModel: 'voice-model-123', screenAnswerLanguage: 'Spanish', voiceAnswerLanguage: 'Vietnamese', sourceDisplayId: 'display-3', voiceMemoryEnabled: false, voiceMemoryContextAnswers: 3, voiceAudioDeviceId: 'microphone-123', voiceFontSizePx: 18 });
+  const saved = saveSettings(directory, { prompt: 'Keep this prompt', model: 'gpt-5.6-terra', voiceModel: 'gpt-5.6-sol', voiceCustomModel: 'voice-model-123', screenAnswerLanguage: 'Spanish', voiceAnswerLanguage: 'Vietnamese', sourceDisplayId: 'display-3', voiceMemoryEnabled: false, voiceMemoryContextAnswers: 3, voiceAudioDeviceId: 'microphone-123', voiceFontSizePx: 18, voiceScreenContextEnabled: true, combinedResultDisplayId: 'display-2' });
   const loaded = loadSettings(directory);
   assert.equal(saved.prompt, 'Keep this prompt');
   assert.equal(loaded.prompt, 'Keep this prompt');
@@ -65,6 +67,8 @@ test('should persist settings outside the renderer state shape', () => {
   assert.equal(loaded.voiceMemoryContextAnswers, 3);
   assert.equal(loaded.voiceResultDisplayId, '');
   assert.equal(loaded.previousResultDisplayId, 'auto');
+  assert.equal(loaded.combinedResultDisplayId, 'display-2');
+  assert.equal(loaded.voiceScreenContextEnabled, true);
   assert.equal(loaded.voiceAudioDeviceId, 'microphone-123');
   assert.equal(loaded.voiceFontSizePx, 18);
   assert.equal(loaded.voiceTurnDetection, 'semantic-auto');

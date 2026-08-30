@@ -59,6 +59,9 @@ test('should serve state and accept a non-blocking analyze request', async () =>
   const voiceMemory = await request(port, '/voice?view=memory');
   assert.equal(voiceMemory.status, 200);
   assert.match(voiceMemory.body, /voice\.js/);
+  const combined = await request(port, '/voice?view=combined');
+  assert.equal(combined.status, 200);
+  assert.match(combined.body, /voice\.js/);
   const accepted = await request(port, '/api/analyze', { method: 'POST', body: {}, token: 'test-token' });
   assert.equal(accepted.status, 202);
   await new Promise((resolve) => setTimeout(resolve, 15));
