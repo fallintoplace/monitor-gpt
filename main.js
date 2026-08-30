@@ -805,7 +805,7 @@ async function ensureWindows() {
     resultWindow?.showInactive();
     voiceResultWindow?.showInactive();
     voiceMemoryResultWindow?.showInactive();
-    combinedResultWindow?.hide();
+    combinedResultWindow?.showInactive();
     positionPreviousResultWindow();
   })().finally(() => {
     windowsStartPromise = null;
