@@ -93,9 +93,9 @@
   function renderHistory(history) {
     const target = $('voice-history');
     target.replaceChildren();
-    for (const [index, entry] of history.entries()) {
+    for (const [index, entry] of history.slice().reverse().entries()) {
       const article = document.createElement('article');
-      article.className = `voice-turn${index === history.length - 1 ? ' latest' : ''}`;
+      article.className = `voice-turn${index === 0 ? ' latest' : ''}`;
       const meta = document.createElement('div');
       meta.className = 'voice-turn-meta';
       const time = entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString() : '';
@@ -151,10 +151,10 @@
     document.title = `Monitor GPT · ${combinedView ? 'Combined' : memoryView ? 'Voice Memory' : 'Voice'}`;
     document.querySelector('.result-label').textContent = viewLabel;
     $('voice-footer-mode').textContent = combinedView
-      ? 'COMBINED · END/PAGEDOWN SCREEN SYNC'
+      ? 'COMBINED · NEWEST FIRST · END/PAGEDOWN SCREEN SYNC'
       : memoryView
-      ? 'VOICE MEMORY · PAGE UP TOGGLE'
-      : 'VOICE · NO MEMORY · PAGE UP TOGGLE';
+      ? 'VOICE MEMORY · NEWEST FIRST · HOME / PAGE UP TOGGLE'
+      : 'VOICE · NO MEMORY · NEWEST FIRST · HOME / PAGE UP TOGGLE';
     const label = statusLabel(voice);
     const status = $('voice-result-status');
     status.className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'capturing', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
@@ -190,16 +190,14 @@
       const scrollTop = scroller?.scrollTop || 0;
       const latestId = history.at(-1)?.id || '';
       const followLatest = scroller
-        ? latestId !== lastLatestId || scroller.scrollHeight - scrollTop - scroller.clientHeight <= 24
+        ? latestId !== lastLatestId || scrollTop <= 24
         : true;
       renderHistory(history);
       lastHistorySignature = currentHistorySignature;
       lastLatestId = latestId;
       requestAnimationFrame(() => {
         if (!document.scrollingElement) return;
-        document.scrollingElement.scrollTop = followLatest
-          ? document.scrollingElement.scrollHeight
-          : scrollTop;
+        document.scrollingElement.scrollTop = followLatest ? 0 : scrollTop;
       });
     }
 
