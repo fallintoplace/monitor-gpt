@@ -40,6 +40,19 @@ test('should clear entries and screenshot when requested', () => {
   assert.equal(memory.summary().screenshotSaved, false);
 });
 
+test('should clear only the latest screenshot when requested', () => {
+  const directory = tempDirectory();
+  const memory = new LocalMemory(directory, { maxEntries: 30 });
+  memory.addAnalysis({ prompt: 'prompt', answer: 'answer' });
+  memory.saveLatestImage(Buffer.from('image'));
+
+  memory.clearLatestImage();
+
+  assert.equal(memory.summary().count, 1);
+  assert.equal(memory.summary().screenshotSaved, false);
+  assert.equal(memory.getLatestImagePath(), null);
+});
+
 test('should store no entries when the local limit is zero', () => {
   const memory = new LocalMemory(tempDirectory(), { maxEntries: 0 });
   memory.addAnalysis({ prompt: 'prompt', answer: 'answer' });
@@ -48,10 +61,22 @@ test('should store no entries when the local limit is zero', () => {
 
 test('should store voice text without attaching a screenshot', () => {
   const memory = new LocalMemory(tempDirectory(), { maxEntries: 30 });
-  memory.addVoiceTranscript({ transcript: 'What is CORS?', prompt: 'Keep it short.', answer: 'It controls cross-origin requests.' });
+  memory.addVoiceTranscript({ transcript: 'What is CORS?', prompt: 'Keep it short.', answer: 'It controls cross-origin requests.', memoryAnswer: 'It controls cross-origin requests and remembers earlier turns.' });
   const entry = memory.list()[0];
   assert.equal(entry.kind, 'voice');
   assert.equal(entry.transcript, 'What is CORS?');
   assert.equal(entry.answer, 'It controls cross-origin requests.');
+  assert.equal(entry.memoryAnswer, 'It controls cross-origin requests and remembers earlier turns.');
   assert.equal(memory.summary().screenshotSaved, false);
+});
+
+test('should keep the state summary small while exposing all entries in details', () => {
+  const memory = new LocalMemory(tempDirectory(), { maxEntries: 30 });
+  for (let index = 0; index < 12; index += 1) {
+    memory.addAnalysis({ prompt: `prompt ${index}`, answer: `answer ${index}` });
+  }
+
+  assert.equal(Object.hasOwn(memory.summary(), 'entries'), false);
+  assert.equal(memory.details().entries.length, 12);
+  assert.equal(memory.details().entries[0].answer, 'answer 11');
 });

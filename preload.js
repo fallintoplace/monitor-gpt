@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('monitorApp', {
     start: () => ipcRenderer.invoke('voice:start'),
     stop: () => ipcRenderer.invoke('voice:stop'),
     commit: () => ipcRenderer.invoke('voice:commit'),
+    onToggleRequested: (callback) => {
+      if (typeof callback !== 'function') return () => {};
+      const listener = () => callback();
+      ipcRenderer.on('voice:toggle-request', listener);
+      return () => ipcRenderer.removeListener('voice:toggle-request', listener);
+    },
     sendAudio: (audio) => {
       if (audio instanceof ArrayBuffer) {
         ipcRenderer.send('voice:audio', audio);

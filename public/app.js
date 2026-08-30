@@ -12,6 +12,7 @@
   let voiceCaptureGeneration = 0;
   let voiceWanted = false;
   let audioDevicesLoaded = false;
+  let voiceCommitPromise = null;
   const VOICE_PAUSE_MS = Object.freeze({
     server: 450,
     'semantic-auto': 650,
@@ -48,10 +49,10 @@
     if (signature !== lastDisplaySignature) {
       lastDisplaySignature = signature;
       const options = (nextState.displays || []).map((display) => ({
-        value: String(display.captureNumber),
+        value: String(display.id),
         label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}${display.isPrimary ? ' · primary' : ''}`
       }));
-      setSelectOptions($('source-display'), options, nextState.settings.sourceDisplayNumber);
+      setSelectOptions($('source-display'), options, nextState.settings.sourceDisplayId || nextState.settings.sourceDisplayNumber);
       const resultOptions = (nextState.displays || []).map((display) => ({
         value: String(display.id),
         label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}`
@@ -140,6 +141,8 @@
     setValue('voice-audio-device', settings.voiceAudioDeviceId);
     setValue('voice-font-size', settings.voiceFontSizePx);
     setValue('voice-answer-language', settings.voiceAnswerLanguage);
+    $('voice-memory-enabled').checked = Boolean(settings.voiceMemoryEnabled);
+    setValue('voice-memory-context', settings.voiceMemoryContextAnswers);
     $('skip-unchanged').checked = Boolean(settings.skipUnchanged);
     $('result-autofit').checked = Boolean(settings.resultAutoFit);
     $('memory-enabled').checked = Boolean(settings.memoryEnabled);
@@ -172,7 +175,7 @@
       memoryEnabled: $('memory-enabled').checked,
       memoryMaxEntries: Math.max(0, Number($('memory-max').value || 0)),
       memoryContextAnswers: Math.max(0, Number($('memory-context').value || 0)),
-      sourceDisplayNumber: Number($('source-display').value || 1),
+      sourceDisplayId: $('source-display').value || '',
       resultDisplayId: $('result-display').value || '',
       previousResultDisplayId: $('previous-result-display').value || '',
       voiceResultDisplayId: $('voice-result-display').value || '',
@@ -181,7 +184,9 @@
       voiceTranscriptionDelay: $('voice-transcription-delay').value,
       voiceAudioDeviceId: $('voice-audio-device').value || '',
       voiceFontSizePx: Math.max(10, Number($('voice-font-size').value || 16)),
-      voiceAnswerLanguage: $('voice-answer-language').value
+      voiceAnswerLanguage: $('voice-answer-language').value,
+      voiceMemoryEnabled: $('voice-memory-enabled').checked,
+      voiceMemoryContextAnswers: Math.max(0, Number($('voice-memory-context').value || 0))
     };
   }
 
@@ -262,23 +267,33 @@
     return sent;
   }
 
-  async function commitVoiceTurn() {
+  function commitVoiceTurn() {
+    if (voiceCommitPromise) return voiceCommitPromise;
     const vad = voiceVad;
-    if (!vad?.sentAudio || vad.committing) return false;
+    if (!vad?.sentAudio) return Promise.resolve(false);
     vad.committing = true;
     vad.active = false;
-    try {
-      return Boolean(await window.monitorApp?.voice?.commit?.());
-    } finally {
-      if (voiceVad === vad) {
-        vad.committing = false;
-        vad.sentAudio = false;
-        vad.speechMs = 0;
-        vad.lastSpeechAt = 0;
-        vad.preroll = [];
-        vad.prerollMs = 0;
+    const promise = (async () => {
+      try {
+        return Boolean(await window.monitorApp?.voice?.commit?.());
+      } catch {
+        return false;
+      } finally {
+        if (voiceVad === vad) {
+          vad.committing = false;
+          vad.sentAudio = false;
+          vad.speechMs = 0;
+          vad.lastSpeechAt = 0;
+          vad.preroll = [];
+          vad.prerollMs = 0;
+        }
       }
-    }
+    })();
+    voiceCommitPromise = promise;
+    void promise.then(() => {
+      if (voiceCommitPromise === promise) voiceCommitPromise = null;
+    });
+    return promise;
   }
 
   function handleVoiceChunk(input, audio, durationMs) {
@@ -522,7 +537,7 @@
   }
 
   function bind() {
-    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language']) {
+    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language', 'voice-memory-enabled', 'voice-memory-context']) {
       $(id).addEventListener('input', () => {
         if (id === 'model') $('custom-model-wrap').classList.toggle('hidden', $('model').value !== 'custom');
         if (id === 'voice-model') $('voice-custom-model-wrap').classList.toggle('hidden', $('voice-model').value !== 'custom');
@@ -533,6 +548,7 @@
     }
     $('save-settings').addEventListener('click', () => void saveSettings(true).catch((error) => setControlStatus(error.message, 'error')));
     $('save-voice-settings').addEventListener('click', () => void saveSettings(true, 'Voice settings saved locally.').catch((error) => setControlStatus(error.message, 'error')));
+    window.monitorApp?.voice?.onToggleRequested?.(() => void toggleVoiceCapture());
     $('analyze-now').addEventListener('click', async () => {
       try {
         await saveSettings(false);
@@ -553,7 +569,7 @@
     });
     $('refresh-displays').addEventListener('click', () => {
       lastDisplaySignature = '';
-      void fetch('/api/displays', { cache: 'no-store' }).then((response) => response.json()).then((data) => renderDisplays({ displays: data.displays, settings: currentSettings() }));
+      void fetch('/api/displays', { cache: 'no-store' }).then((response) => response.json()).then((data) => renderDisplays({ displays: data.displays, settings: data.settings || currentSettings() }));
     });
     $('view-memory').addEventListener('click', async () => {
       await loadMemory();

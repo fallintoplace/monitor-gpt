@@ -27,6 +27,7 @@ test('should persist and load bounds for supported windows', () => {
       result: { displayId: 2, bounds: { x: -1920, y: 0, width: 1920, height: 1080 } },
       previous: { displayId: 4, bounds: { x: 3840, y: 0, width: 1280, height: 800 } },
       voice: { displayId: 3, bounds: { x: 1920, y: 0, width: 1280, height: 800 } },
+      'voice-memory': { displayId: 3, bounds: { x: 3212, y: 0, width: 1280, height: 800 } },
       ignored: { displayId: 4, bounds: { x: 0, y: 0, width: 1280, height: 800 } }
     };
 
@@ -36,7 +37,8 @@ test('should persist and load bounds for supported windows', () => {
       control: { displayId: '1', bounds: { x: 10, y: 20, width: 1280, height: 980 } },
       result: { displayId: '2', bounds: { x: -1920, y: 0, width: 1920, height: 1080 } },
       previous: { displayId: '4', bounds: { x: 3840, y: 0, width: 1280, height: 800 } },
-      voice: { displayId: '3', bounds: { x: 1920, y: 0, width: 1280, height: 800 } }
+      voice: { displayId: '3', bounds: { x: 1920, y: 0, width: 1280, height: 800 } },
+      'voice-memory': { displayId: '3', bounds: { x: 3212, y: 0, width: 1280, height: 800 } }
     });
     assert.equal(fs.existsSync(windowStatePath(directory)), true);
   } finally {
@@ -50,9 +52,11 @@ test('should reject invalid or undersized bounds', () => {
     result: { bounds: { x: 0, y: 0, width: 1280, height: 359 } },
     previous: { bounds: { x: 0, y: 0, width: 1280, height: 359 } },
     voice: { bounds: { x: 0, y: 0, width: 1280, height: 800 } },
+    'voice-memory': { bounds: { x: 0, y: 0, width: 1280, height: 800 } },
     ignored: { bounds: { x: 0, y: 0, width: 1280, height: 800 } }
   }), {
-    voice: { displayId: '', bounds: { x: 0, y: 0, width: 1280, height: 800 } }
+    voice: { displayId: '', bounds: { x: 0, y: 0, width: 1280, height: 800 } },
+    'voice-memory': { displayId: '', bounds: { x: 0, y: 0, width: 1280, height: 800 } }
   });
   assert.equal(normalizeBounds({ x: 0, y: 0, width: Number.NaN, height: 800 }), null);
 });

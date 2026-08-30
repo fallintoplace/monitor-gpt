@@ -44,6 +44,20 @@ test('should build a separate text-only voice answer request', () => {
   assert.equal(customPayload.model, 'voice-model-123');
 });
 
+test('should put low-priority voice memory before the current question', () => {
+  const payload = buildVoiceAnswerPayload({
+    settings: { voiceModel: 'gpt-5.6-luna', reasoning: 'medium', voiceAnswerLanguage: 'English' },
+    transcript: 'What is CORS?',
+    memoryContext: 'LOW-PRIORITY VOICE MEMORY. Earlier question: What is HTTP?'
+  });
+
+  assert.equal(payload.input[0].content.length, 2);
+  assert.match(payload.input[0].content[0].text, /LOW-PRIORITY VOICE MEMORY/);
+  assert.match(payload.input[0].content[1].text, /What is CORS/);
+  assert.equal(payload.input[0].content.some((part) => part.type === 'input_image'), false);
+  assert.match(payload.instructions, /low-priority reference only/);
+});
+
 test('should never include the API key in a request error', async () => {
   const secret = 'sk-test-secret-value';
   await assert.rejects(

@@ -234,7 +234,7 @@
 
   function updateCapture(state) {
     const image = $('last-capture');
-    if (!state.memory?.screenshotSaved) {
+    if (RESULT_VIEW === 'previous' || !state.memory?.screenshotSaved) {
       image.classList.add('hidden');
       return;
     }
@@ -254,7 +254,9 @@
     statusElement.className = `status-pill ${status === 'error' ? 'error' : status === 'analyzing' || status === 'capturing' ? 'analyzing' : 'ready'}`;
     statusElement.innerHTML = `<span class="status-dot"></span> ${status.toUpperCase()}`;
     $('result-source').textContent = `SOURCE: ${state.sourceDisplay?.label || '—'} · D${state.sourceDisplay?.captureNumber || '—'} · ${state.sourceDisplay?.width || '—'}×${state.sourceDisplay?.height || '—'}`;
-    $('result-footer-source').textContent = `SOURCE: ${state.sourceDisplay?.label || '—'} · D${state.sourceDisplay?.captureNumber || '—'} · LAST IMAGE ${state.lastImageBytes ? `${(state.lastImageBytes / 1048576).toFixed(1)} MB` : '—'}`;
+    $('result-footer-source').textContent = RESULT_VIEW === 'previous'
+      ? 'PREVIOUS ANSWER · SCREENSHOT HIDDEN'
+      : `SOURCE: ${state.sourceDisplay?.label || '—'} · D${state.sourceDisplay?.captureNumber || '—'} · LAST IMAGE ${state.lastImageBytes ? `${(state.lastImageBytes / 1048576).toFixed(1)} MB` : '—'}`;
     const displayedEntry = resultHistory(state).at(-1);
     const updated = displayedEntry?.createdAt || (RESULT_VIEW === 'latest' ? state.completedAt : null);
     $('result-updated').textContent = updated ? `Updated ${new Date(updated).toLocaleTimeString()}` : '';

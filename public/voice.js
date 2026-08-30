@@ -2,6 +2,8 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  const memoryView = new URLSearchParams(window.location.search).get('view') === 'memory';
+  const voiceStateKey = memoryView ? 'voiceMemory' : 'voice';
   let lastAnswer = null;
   let lastTheme = null;
   let lastTranscript = null;
@@ -15,6 +17,7 @@
     return ({
       unavailable: 'OFF',
       off: 'OFF',
+      disabled: 'OFF',
       connecting: 'CONNECTING',
       on: 'READY',
       speaking: 'LISTENING',
@@ -48,12 +51,15 @@
     else target.textContent = answer;
   }
 
-  function renderTranslating() {
+  function renderTranslating(settings) {
     const target = $('voice-answer');
     target.replaceChildren();
     const loading = document.createElement('span');
     loading.className = 'voice-loading';
-    loading.textContent = 'Translating and preparing answer';
+    const contextCount = Math.max(0, Number(settings?.voiceMemoryContextAnswers || 0));
+    loading.textContent = memoryView
+      ? `Answering with the last ${contextCount} voice turn${contextCount === 1 ? '' : 's'}`
+      : 'Answering without voice memory';
     const dots = document.createElement('span');
     dots.className = 'voice-loading-dots';
     dots.setAttribute('aria-hidden', 'true');
@@ -63,8 +69,8 @@
   }
 
   function voiceHistory(state) {
-    return Array.isArray(state.voice?.history)
-      ? state.voice.history.filter((entry) => entry && entry.answer)
+    return Array.isArray(state[voiceStateKey]?.history)
+      ? state[voiceStateKey].history.filter((entry) => entry && entry.answer)
       : [];
   }
 
@@ -109,11 +115,19 @@
   }
 
   function renderState(state) {
-    const voice = state.voice || {};
+    const voice = state[voiceStateKey] || {};
     const history = voiceHistory(state);
     window.__voicePollMs = state.settings?.resultPollMs || 1000;
     applyTheme(state.settings);
     applyVoiceFontSize(state.settings);
+    const viewLabel = memoryView
+      ? `LIVE VOICE · LAST ${Math.max(0, Number(state.settings?.voiceMemoryContextAnswers || 0))}`
+      : 'LIVE VOICE · NO MEMORY';
+    document.title = `Monitor GPT · ${memoryView ? 'Voice Memory' : 'Voice'}`;
+    document.querySelector('.result-label').textContent = viewLabel;
+    $('voice-footer-mode').textContent = memoryView
+      ? 'VOICE MEMORY · PAGE UP TOGGLE'
+      : 'VOICE · NO MEMORY · PAGE UP TOGGLE';
     const label = statusLabel(voice);
     const status = $('voice-result-status');
     status.className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
@@ -151,7 +165,7 @@
       : `answer:${voice.answer || ''}`;
     if (liveAnswerState !== lastLiveAnswerState) {
       lastLiveAnswerState = liveAnswerState;
-      if (voice.status === 'translating') renderTranslating();
+      if (voice.status === 'translating') renderTranslating(state.settings);
       else {
         lastAnswer = voice.answer || '';
         renderAnswer(lastAnswer);

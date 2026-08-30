@@ -15,7 +15,7 @@ function makeRunner(options = {}) {
     dataDirectory,
     settings: { ...DEFAULT_SETTINGS, sourceDisplayNumber: 1, skipUnchanged: true },
     memory,
-    capture: async () => ({ buffer: Buffer.from(options.image || 'same image') }),
+    capture: options.capture || (async () => ({ buffer: Buffer.from(options.image || 'same image') })),
     logger: { error: () => {} },
     requestOpenAI: async ({ payload, channel }) => {
       calls += 1;
@@ -52,6 +52,32 @@ test('should analyze again when the prompt changes even if the image is identica
   const { runner, getCalls } = makeRunner();
   await runner.triggerAnalysis();
   runner.updateSettings({ prompt: 'A different question' });
+  await runner.triggerAnalysis();
+  assert.equal(getCalls(), 2);
+});
+
+test('should analyze again when the screen answer language changes', async () => {
+  const { runner, getCalls } = makeRunner();
+  await runner.triggerAnalysis();
+  runner.updateSettings({ screenAnswerLanguage: 'Spanish' });
+  await runner.triggerAnalysis();
+  assert.equal(getCalls(), 2);
+});
+
+test('should invalidate the unchanged-image cache when memory is cleared', async () => {
+  const { runner, getCalls } = makeRunner();
+  await runner.triggerAnalysis();
+  runner.clearMemory();
+  await runner.triggerAnalysis();
+  assert.equal(getCalls(), 2);
+  assert.equal(runner.snapshot().result, 'answer');
+});
+
+test('should invalidate the unchanged-image cache when the latest analysis is deleted', async () => {
+  const { runner, getCalls } = makeRunner();
+  await runner.triggerAnalysis();
+  const id = runner.snapshot().resultHistory.at(-1).id;
+  assert.equal(runner.deleteMemoryEntry(id), true);
   await runner.triggerAnalysis();
   assert.equal(getCalls(), 2);
 });
@@ -105,14 +131,71 @@ test('should fall back to a real display when a persisted display is missing', (
   assert.equal(runner.snapshot().settings.resultDisplayId, 'real-display');
 });
 
+test('should keep the selected source display by stable id when display order changes', async () => {
+  let captured;
+  const { runner } = makeRunner({
+    capture: async (options) => {
+      captured = options;
+      return { buffer: Buffer.from('different image') };
+    }
+  });
+  runner.updateSettings({ sourceDisplayId: 'display-2' });
+  runner.setDisplays([
+    { id: 'display-2', captureNumber: 1, label: 'External display 1', width: 100, height: 100 },
+    { id: 'display-1', captureNumber: 2, label: 'Main display', width: 100, height: 100 }
+  ]);
+  await runner.triggerAnalysis();
+  assert.equal(runner.snapshot().sourceDisplay.id, 'display-2');
+  assert.equal(captured.displayId, 'display-2');
+  assert.equal(captured.displayNumber, 1);
+});
+
+test('should convert legacy display numbers to stable display ids', () => {
+  const { runner } = makeRunner();
+  runner.updateSettings({ resultDisplayId: '2', voiceResultDisplayId: '1', previousResultDisplayId: '2' });
+
+  runner.setDisplays([
+    { id: 'stable-main', captureNumber: 1, label: 'Main display', width: 100, height: 100 },
+    { id: 'stable-external', captureNumber: 2, label: 'External display 1', width: 100, height: 100 }
+  ]);
+
+  assert.equal(runner.snapshot().settings.resultDisplayId, 'stable-external');
+  assert.equal(runner.snapshot().settings.voiceResultDisplayId, 'stable-main');
+  assert.equal(runner.snapshot().settings.previousResultDisplayId, 'stable-external');
+});
+
+test('should refresh displays from the current display provider', () => {
+  let displays = [
+    { id: 'display-1', captureNumber: 1, label: 'Main display', width: 100, height: 100 }
+  ];
+  const dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'monitor-gpt-runner-'));
+  const memory = new LocalMemory(dataDirectory, { maxEntries: 30 });
+  const runner = new MonitorRunner({
+    dataDirectory,
+    settings: { ...DEFAULT_SETTINGS, sourceDisplayNumber: 1 },
+    memory,
+    getDisplays: () => displays,
+    capture: async () => ({ buffer: Buffer.from('image') }),
+    requestOpenAI: async () => ({ text: 'answer' })
+  });
+  runner.setDisplays(displays);
+  displays = [
+    { id: 'display-2', captureNumber: 1, label: 'External display 1', width: 200, height: 100 }
+  ];
+  assert.deepEqual(runner.refreshDisplays(), displays);
+  assert.equal(runner.snapshot().sourceDisplay.id, 'display-2');
+});
+
 test('should route a completed voice transcript to a text-only answer', async () => {
   let voicePayload;
+  let memoryPayload;
   const { runner } = makeRunner({
     requestOpenAI: async ({ payload, channel }) => {
       if (channel === 'voice') {
         voicePayload = payload;
         return { text: 'A mutex lets one thread enter a critical section at a time.' };
       }
+      if (channel === 'voice-memory') memoryPayload = payload;
       return { text: 'screen answer' };
     }
   });
@@ -135,8 +218,110 @@ test('should route a completed voice transcript to a text-only answer', async ()
   assert.equal(runner.snapshot().voice.transcript, 'What is a mutex?');
   assert.equal(runner.snapshot().voice.history.length, 1);
   assert.equal(runner.snapshot().voice.history[0].transcript, 'What is a mutex?');
+  assert.equal(runner.snapshot().voiceMemory.answer, 'screen answer');
+  assert.equal(runner.snapshot().voiceMemory.history.length, 1);
   assert.equal(voicePayload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.match(voicePayload.input[0].content[0].text, /What is a mutex/);
+  assert.equal(memoryPayload.input[0].content.some((part) => part.type === 'input_image'), false);
+});
+
+test('should answer voice questions with and without the previous five turns', async () => {
+  const calls = [];
+  let answerNumber = 0;
+  const { runner, memory } = makeRunner({
+    requestOpenAI: async ({ payload, channel }) => {
+      calls.push({ payload, channel });
+      if (channel === 'voice') return { text: `baseline answer ${++answerNumber}` };
+      return { text: `memory answer ${answerNumber}` };
+    }
+  });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-1',
+    transcript: 'What is CORS?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-2',
+    transcript: 'What is idempotency?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const state = runner.snapshot();
+  assert.equal(calls.filter((call) => call.channel === 'voice').length, 2);
+  assert.equal(calls.filter((call) => call.channel === 'voice-memory').length, 2);
+  assert.deepEqual(state.voice.history.map((entry) => entry.answer), ['baseline answer 1', 'baseline answer 2']);
+  assert.deepEqual(state.voiceMemory.history.map((entry) => entry.answer), ['memory answer 1', 'memory answer 2']);
+  const secondMemoryCall = calls
+    .filter((call) => call.channel === 'voice-memory')
+    .at(-1);
+  const memoryText = secondMemoryCall.payload.input[0].content.map((part) => part.text || '').join('\n');
+  assert.match(memoryText, /What is CORS/);
+  assert.match(memoryText, /baseline answer 1/);
+  assert.match(memoryText, /What is idempotency/);
+  assert.equal(secondMemoryCall.payload.input[0].content.some((part) => part.type === 'input_image'), false);
+  assert.equal(memory.list().filter((entry) => entry.kind === 'voice').length, 2);
+  assert.equal(memory.list().at(-1).memoryAnswer, 'memory answer 2');
+});
+
+test('should keep the baseline voice window when voice memory comparison is disabled', async () => {
+  const { runner, getCalls } = makeRunner();
+  runner.updateSettings({ voiceMemoryEnabled: false });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-1',
+    transcript: 'What is a mutex?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(getCalls(), 1);
+  assert.equal(runner.snapshot().voice.answer, 'answer');
+  assert.equal(runner.snapshot().voiceMemory.status, 'disabled');
+});
+
+test('should show a memory-window error without hiding a successful baseline answer', async () => {
+  const { runner } = makeRunner({
+    requestOpenAI: async ({ channel }) => {
+      if (channel === 'voice-memory') throw new Error('memory request failed');
+      return { text: 'baseline answer' };
+    }
+  });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-1',
+    transcript: 'What is a mutex?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(runner.snapshot().voice.answer, 'baseline answer');
+  assert.equal(runner.snapshot().voice.error, '');
+  assert.match(runner.snapshot().voiceMemory.error, /memory request failed/);
 });
 
 test('should show translating while a voice answer is pending', async () => {
@@ -191,6 +376,55 @@ test('should only commit a voice buffer after audio was sent', async () => {
   assert.equal(runner.commitVoiceAudio(), true);
   assert.equal(runner.commitVoiceAudio(), false);
   assert.equal(commits, 1);
+});
+
+test('should wait for a committed voice transcript before stopping', async () => {
+  const { runner } = makeRunner({
+    requestOpenAI: async () => ({ text: 'A mutex protects a critical section.' })
+  });
+  let commits = 0;
+  let stops = 0;
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => { stops += 1; },
+    sendAudio: () => true,
+    commit: () => {
+      commits += 1;
+      return true;
+    }
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.sendVoiceAudio(Buffer.from([1, 2, 3]));
+
+  const stopping = runner.stopVoice();
+  assert.equal(commits, 1);
+  assert.equal(stops, 0);
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-drain',
+    transcript: 'What is a mutex?'
+  });
+  await stopping;
+
+  assert.equal(stops, 1);
+  assert.equal(runner.snapshot().voice.status, 'off');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(runner.snapshot().voice.history.length, 1);
+});
+
+test('should report a rejected analysis request while another analysis is running', async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const { runner } = makeRunner({
+    requestOpenAI: async () => pending
+  });
+  const active = runner.triggerAnalysis();
+  const rejected = runner.requestAnalysis({ reason: 'button' });
+  assert.deepEqual(rejected, { accepted: false, reason: 'already-running' });
+  release({ text: 'answer' });
+  await active;
 });
 
 test('should choose a third display for voice answers when it is available', () => {

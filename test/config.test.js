@@ -19,8 +19,11 @@ test('should keep the remembered defaults when settings are missing', () => {
   assert.equal(settings.prompt, DEFAULT_PROMPT);
   assert.equal(settings.screenAnswerLanguage, 'English');
   assert.equal(settings.voiceAnswerLanguage, 'English');
+  assert.equal(settings.sourceDisplayId, '');
   assert.equal(settings.voiceTurnDetection, 'semantic-auto');
   assert.equal(settings.voiceTranscriptionDelay, 'low');
+  assert.equal(settings.voiceMemoryEnabled, true);
+  assert.equal(settings.voiceMemoryContextAnswers, 5);
   assert.equal(settings.voiceAudioDeviceId, '');
   assert.equal(settings.voiceFontSizePx, 16);
   assert.ok(settings.voicePrompt.length > 0);
@@ -43,11 +46,12 @@ test('should normalize invalid settings without accepting unsupported values', (
   assert.equal(settings.triggerMode, DEFAULT_SETTINGS.triggerMode);
   assert.equal(settings.screenAnswerLanguage, 'English');
   assert.equal(settings.voiceAnswerLanguage.length, 80);
+  assert.equal(settings.voiceMemoryContextAnswers, DEFAULT_SETTINGS.voiceMemoryContextAnswers);
 });
 
 test('should persist settings outside the renderer state shape', () => {
   const directory = tempDirectory();
-  const saved = saveSettings(directory, { prompt: 'Keep this prompt', model: 'gpt-5.6-terra', voiceModel: 'gpt-5.6-sol', voiceCustomModel: 'voice-model-123', screenAnswerLanguage: 'Spanish', voiceAnswerLanguage: 'Vietnamese', voiceAudioDeviceId: 'microphone-123', voiceFontSizePx: 18 });
+  const saved = saveSettings(directory, { prompt: 'Keep this prompt', model: 'gpt-5.6-terra', voiceModel: 'gpt-5.6-sol', voiceCustomModel: 'voice-model-123', screenAnswerLanguage: 'Spanish', voiceAnswerLanguage: 'Vietnamese', sourceDisplayId: 'display-3', voiceMemoryEnabled: false, voiceMemoryContextAnswers: 3, voiceAudioDeviceId: 'microphone-123', voiceFontSizePx: 18 });
   const loaded = loadSettings(directory);
   assert.equal(saved.prompt, 'Keep this prompt');
   assert.equal(loaded.prompt, 'Keep this prompt');
@@ -56,6 +60,9 @@ test('should persist settings outside the renderer state shape', () => {
   assert.equal(loaded.voiceCustomModel, 'voice-model-123');
   assert.equal(loaded.screenAnswerLanguage, 'Spanish');
   assert.equal(loaded.voiceAnswerLanguage, 'Vietnamese');
+  assert.equal(loaded.sourceDisplayId, 'display-3');
+  assert.equal(loaded.voiceMemoryEnabled, false);
+  assert.equal(loaded.voiceMemoryContextAnswers, 3);
   assert.equal(loaded.voiceResultDisplayId, '');
   assert.equal(loaded.previousResultDisplayId, 'auto');
   assert.equal(loaded.voiceAudioDeviceId, 'microphone-123');

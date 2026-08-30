@@ -33,7 +33,7 @@
           <label>
             <span>Screen to analyze</span>
             <select id="source-display"></select>
-            <small>macOS capture order is shown as the D-number in each option.</small>
+            <small>The D-number is a stable app label; capture uses the selected display identity.</small>
           </label>
           <label>
             <span>Screen for the latest result</span>
@@ -47,7 +47,7 @@
             <select id="previous-result-display"></select>
             <small>Always opens a separate window. Automatic uses a free display when available.</small>
           </label>
-          <div class="settings-note"><strong>Fourth result window</strong><br>Move the automatic window wherever you want, or choose a display for it.</div>
+          <div class="settings-note"><strong>Previous answer window</strong><br>This is a separate window for the previous screen answer. Move it wherever you want, or choose a display for it.</div>
         </div>
 
         <label class="prompt-label">
@@ -220,6 +220,14 @@
             <span>Voice custom model ID</span>
             <input id="voice-custom-model" type="text" autocomplete="off" placeholder="gpt-...">
             <small>Use an exact model ID available to your API project.</small>
+          </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label class="check-label"><input id="voice-memory-enabled" type="checkbox"><span>Compare with voice memory</span><small>Keep the current voice window fresh, and open a second window using earlier voice turns.</small></label>
+          <label>
+            <span>Previous voice turns</span>
+            <input id="voice-memory-context" type="number" min="0" max="20" step="1">
+            <small>The memory window sends this many earlier question-and-answer pairs. Default: 5.</small>
           </label>
         </div>
         <div class="form-grid two-up compact-grid">

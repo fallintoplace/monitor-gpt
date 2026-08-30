@@ -1,8 +1,9 @@
 require('dotenv').config();
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, screen } = require('electron');
 const { captureDisplay } = require('./lib/capture');
 const { createLocalServer, listen } = require('./lib/server');
 const { loadSettings } = require('./lib/config');
@@ -25,15 +26,24 @@ let controlWindow;
 let resultWindow;
 let previousResultWindow;
 let voiceResultWindow;
+let voiceMemoryResultWindow;
 let localServer;
 let localPort;
+let localApiToken;
 let runner;
+let backendStartPromise = null;
+let windowsStartPromise = null;
 let registeredAccelerators = [];
 let positionedResultDisplayKey = null;
 let positionedPreviousResultDisplayKey = null;
 let positionedVoiceResultDisplayKey = null;
+let positionedVoiceMemoryResultDisplayKey = null;
 let voiceIpcRegistered = false;
 let voicePermissionConfigured = false;
+let localRequestHeadersConfigured = false;
+let displayEventsRegistered = false;
+let displayRefreshTimer = null;
+let shuttingDown = false;
 let windowStateDirectory;
 let persistedWindowState = {};
 let windowStateSaveTimer = null;
@@ -204,6 +214,7 @@ function flushWindowState() {
   rememberWindowBounds('result', resultWindow);
   rememberWindowBounds('previous', previousResultWindow);
   rememberWindowBounds('voice', voiceResultWindow);
+  rememberWindowBounds('voice-memory', voiceMemoryResultWindow);
 
   if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
   windowStateSaveTimer = null;
@@ -220,6 +231,7 @@ function bindWindowBounds(name, window) {
   for (const event of ['move', 'resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'close']) {
     window.on(event, remember);
   }
+  window.once('closed', () => clearWindowReference(name, window));
 }
 
 function restoreControlWindow() {
@@ -307,22 +319,90 @@ function positionVoiceResultWindow() {
   positionedVoiceResultDisplayKey = displayKey;
 }
 
+function voiceTileBounds(display) {
+  const target = numericDisplayBounds(display);
+  const gap = 12;
+  if (!target || target.width < MIN_WINDOW_WIDTH * 2 + gap) return null;
+
+  const width = Math.floor((target.width - gap) / 2);
+  return [
+    { x: target.x, y: target.y, width, height: target.height },
+    { x: target.x + width + gap, y: target.y, width, height: target.height }
+  ];
+}
+
+function defaultVoiceMemoryBounds(display) {
+  const target = numericDisplayBounds(display);
+  if (!target) return null;
+  return clampBoundsToDisplay({
+    x: target.x + Math.round(target.width * 0.4),
+    y: target.y + Math.round(target.height * 0.12),
+    width: Math.round(target.width * 0.58),
+    height: Math.round(target.height * 0.76)
+  }, display);
+}
+
+function positionVoiceMemoryResultWindow() {
+  if (!voiceMemoryResultWindow || voiceMemoryResultWindow.isDestroyed()) return;
+  const display = displayForVoiceResult();
+  if (!display) return;
+  const displayKey = displayBoundsKey(display);
+  if (displayKey === positionedVoiceMemoryResultDisplayKey) return;
+
+  const tile = voiceTileBounds(display);
+  const displayChanged = Boolean(positionedVoiceMemoryResultDisplayKey)
+    && positionedVoiceMemoryResultDisplayKey !== displayKey;
+  const shouldTile = Boolean(tile)
+    && (!persistedWindowState.voice || !persistedWindowState['voice-memory'] || displayChanged);
+
+  if (shouldTile && voiceResultWindow && !voiceResultWindow.isDestroyed()) {
+    const [baselineBounds, memoryBounds] = tile;
+    voiceResultWindow.setBounds(baselineBounds, false);
+    rememberWindowBounds('voice', voiceResultWindow, display.id, baselineBounds);
+    voiceMemoryResultWindow.setBounds(memoryBounds, false);
+    rememberWindowBounds('voice-memory', voiceMemoryResultWindow, display.id, memoryBounds);
+  } else if (persistedWindowState['voice-memory']) {
+    positionWindowOnDisplay('voice-memory', voiceMemoryResultWindow, display);
+  } else {
+    const bounds = defaultVoiceMemoryBounds(display);
+    if (bounds) {
+      voiceMemoryResultWindow.setBounds(bounds, false);
+      rememberWindowBounds('voice-memory', voiceMemoryResultWindow, display.id, bounds);
+    }
+  }
+
+  positionedVoiceMemoryResultDisplayKey = displayKey;
+  voiceMemoryResultWindow.showInactive();
+}
+
 function restoreWindow(window, shouldShow) {
   if (!window || window.isDestroyed() || !shouldShow) return;
   window.showInactive();
 }
 
-async function captureWithoutAppWindows({ displayNumber, maxImageWidth }) {
-  const sourceDisplay = getDisplayList().find((display) => display.captureNumber === displayNumber);
+async function captureWithoutAppWindows({ displayId, displayNumber, maxImageWidth }) {
+  const displays = getDisplayList();
+  const sourceDisplay = displayId
+    ? displays.find((display) => String(display.id) === String(displayId))
+    : displays.find((display) => display.captureNumber === displayNumber);
+  if (!sourceDisplay) throw new Error('The selected source display is no longer available. Refresh the display list.');
   const hiddenWindows = visibleWindowsOnDisplay(
-    [controlWindow, resultWindow, previousResultWindow, voiceResultWindow],
+    [controlWindow, resultWindow, previousResultWindow, voiceResultWindow, voiceMemoryResultWindow],
     sourceDisplay?.id,
     (bounds) => screen.getDisplayMatching(bounds)
   );
   for (const window of hiddenWindows) window.hide();
   await new Promise((resolve) => setTimeout(resolve, 90));
   try {
-    return await captureDisplay({ displayNumber, maxImageWidth });
+    return await captureDisplay({
+      displayId: sourceDisplay?.id,
+      displayNumber: sourceDisplay?.captureNumber || displayNumber,
+      displayWidth: sourceDisplay?.width,
+      displayHeight: sourceDisplay?.height,
+      scaleFactor: sourceDisplay?.scaleFactor,
+      maxImageWidth,
+      desktopCapturerImpl: desktopCapturer
+    });
   } finally {
     for (const window of hiddenWindows) restoreWindow(window, true);
   }
@@ -353,7 +433,11 @@ function configureMicrophonePermissions(window) {
   const windowSession = window.webContents.session;
   const isLocalApp = (webContents, requestingOrigin = '') => {
     const origin = requestingOrigin || webContents?.getURL?.() || '';
-    return origin.startsWith(localOrigin);
+    try {
+      return new URL(origin).origin === localOrigin;
+    } catch {
+      return false;
+    }
   };
   windowSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => (
     permission === 'media' && isLocalApp(webContents, requestingOrigin)
@@ -362,6 +446,17 @@ function configureMicrophonePermissions(window) {
     callback(permission === 'media' && isLocalApp(webContents));
   });
   voicePermissionConfigured = true;
+}
+
+function configureLocalRequestHeaders(window) {
+  if (localRequestHeadersConfigured || !window || !localPort || !localApiToken) return;
+  const windowSession = window.webContents.session;
+  const localApiPattern = `http://127.0.0.1:${localPort}/api/*`;
+  windowSession.webRequest.onBeforeSendHeaders({ urls: [localApiPattern] }, (details, callback) => {
+    details.requestHeaders['X-Monitor-Token'] = localApiToken;
+    callback({ requestHeaders: details.requestHeaders });
+  });
+  localRequestHeadersConfigured = true;
 }
 
 function createWindow(options) {
@@ -381,6 +476,64 @@ function createWindow(options) {
   });
 }
 
+function windowForName(name) {
+  return {
+    control: controlWindow,
+    result: resultWindow,
+    previous: previousResultWindow,
+    voice: voiceResultWindow,
+    'voice-memory': voiceMemoryResultWindow
+  }[name];
+}
+
+function setWindowForName(name, window) {
+  switch (name) {
+    case 'control':
+      controlWindow = window;
+      break;
+    case 'result':
+      resultWindow = window;
+      break;
+    case 'previous':
+      previousResultWindow = window;
+      break;
+    case 'voice':
+      voiceResultWindow = window;
+      break;
+    case 'voice-memory':
+      voiceMemoryResultWindow = window;
+      break;
+    default:
+      break;
+  }
+}
+
+function clearPositionedDisplayKey(name) {
+  switch (name) {
+    case 'result':
+      positionedResultDisplayKey = null;
+      break;
+    case 'previous':
+      positionedPreviousResultDisplayKey = null;
+      break;
+    case 'voice':
+      positionedVoiceResultDisplayKey = null;
+      break;
+    case 'voice-memory':
+      positionedVoiceMemoryResultDisplayKey = null;
+      break;
+    default:
+      break;
+  }
+}
+
+function clearWindowReference(name, window) {
+  if (windowForName(name) !== window) return;
+  setWindowForName(name, undefined);
+  clearPositionedDisplayKey(name);
+  if (name === 'control' && runner) void runner.stopVoice({ graceful: false });
+}
+
 function registerGlobalShortcuts() {
   for (const accelerator of registeredAccelerators) globalShortcut.unregister(accelerator);
   registeredAccelerators = [];
@@ -394,7 +547,10 @@ function registerGlobalShortcuts() {
   const registeredAnalysis = [];
   for (const accelerator of analysis) {
     try {
-      if (globalShortcut.register(accelerator, () => void runner.triggerAnalysis({ reason: `hotkey:${accelerator}` }))) {
+      if (globalShortcut.register(accelerator, () => {
+        if (runner?.requestAnalysis) runner.requestAnalysis({ reason: `hotkey:${accelerator}` });
+        else void runner?.triggerAnalysis({ reason: `hotkey:${accelerator}` });
+      })) {
         registeredAnalysis.push(accelerator);
         registeredAccelerators.push(accelerator);
       }
@@ -406,7 +562,7 @@ function registerGlobalShortcuts() {
   const registeredVoice = [];
   for (const accelerator of voice) {
     try {
-      if (globalShortcut.register(accelerator, () => void runner.toggleVoice())) {
+      if (globalShortcut.register(accelerator, requestVoiceToggle)) {
         registeredVoice.push(accelerator);
         registeredAccelerators.push(accelerator);
       }
@@ -418,66 +574,167 @@ function registerGlobalShortcuts() {
   runner.setHotkeys({ analysis: registeredAnalysis, voice: registeredVoice });
 }
 
-async function startApp() {
-  const dataDirectory = dataDirectoryForApp();
-  fs.mkdirSync(dataDirectory, { recursive: true });
-  windowStateDirectory = dataDirectory;
-  persistedWindowState = loadWindowState(dataDirectory);
-  positionedResultDisplayKey = null;
-  positionedPreviousResultDisplayKey = null;
-  positionedVoiceResultDisplayKey = null;
-  const settings = loadSettings(dataDirectory);
-  const memory = new LocalMemory(dataDirectory, { maxEntries: settings.memoryMaxEntries });
-  runner = new MonitorRunner({
-    dataDirectory,
-    settings,
-    memory,
-    capture: captureWithoutAppWindows,
-    apiKeyReady: Boolean(process.env.OPENAI_API_KEY),
-    requestOpenAI: async ({ payload }) => requestOpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      payload
-    })
-  });
-  runner.setVoiceSession(new RealtimeVoiceSession({
-    apiKey: process.env.OPENAI_API_KEY,
-    onEvent: (event) => runner.handleVoiceEvent(event),
-    onError: (error) => runner.handleVoiceError(error)
-  }));
+function requestVoiceToggle() {
+  if (controlWindow && !controlWindow.isDestroyed()) {
+    controlWindow.webContents.send('voice:toggle-request');
+    return;
+  }
+  if (runner?.snapshot?.().voice?.enabled) void runner.stopVoice({ graceful: false });
+}
 
-  runner.setDisplays(getDisplayList());
-  localServer = createLocalServer({ runner, publicDirectory, memory });
-  localPort = await listen(localServer, process.env.MONITOR_PORT || 4317);
+function registerDisplayEvents() {
+  if (displayEventsRegistered) return;
+  const scheduleRefresh = () => {
+    if (shuttingDown || !runner) return;
+    if (displayRefreshTimer) clearTimeout(displayRefreshTimer);
+    displayRefreshTimer = setTimeout(() => {
+      displayRefreshTimer = null;
+      try {
+        runner.refreshDisplays();
+      } catch (error) {
+        console.warn('Could not refresh displays:', error.message);
+      }
+    }, 120);
+  };
+  for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
+    screen.on(event, scheduleRefresh);
+  }
+  displayEventsRegistered = true;
+}
 
-  controlWindow = createWindow({ width: 1280, height: 980, title: 'Monitor GPT' });
-  resultWindow = createWindow({ width: 1280, height: 800, title: 'Monitor GPT · Result' });
-  previousResultWindow = createWindow({ width: 1280, height: 800, title: 'Monitor GPT · Previous Result' });
-  voiceResultWindow = createWindow({ width: 1280, height: 800, title: 'Monitor GPT · Voice' });
-  configureMicrophonePermissions(controlWindow);
-  await controlWindow.loadURL(`http://127.0.0.1:${localPort}/`);
-  await resultWindow.loadURL(`http://127.0.0.1:${localPort}/result`);
-  await previousResultWindow.loadURL(`http://127.0.0.1:${localPort}/result?view=previous`);
-  await voiceResultWindow.loadURL(`http://127.0.0.1:${localPort}/voice`);
-  restoreControlWindow();
-  positionResultWindow();
-  positionVoiceResultWindow();
-  bindWindowBounds('control', controlWindow);
-  bindWindowBounds('result', resultWindow);
-  bindWindowBounds('previous', previousResultWindow);
-  bindWindowBounds('voice', voiceResultWindow);
-  controlWindow.show();
-  resultWindow.showInactive();
-  voiceResultWindow.showInactive();
-  positionPreviousResultWindow();
-
+function subscribeToRunner() {
   runner.subscribe((snapshot) => {
-    if (snapshot.settings.resultDisplayId) positionResultWindow();
+    positionResultWindow();
     positionPreviousResultWindow();
-    if (snapshot.settings.voiceResultDisplayId) positionVoiceResultWindow();
+    positionVoiceResultWindow();
+    positionVoiceMemoryResultWindow();
+    if (snapshot.settings.previousResultDisplayId === 'off') previousResultWindow?.hide();
   });
-  registerVoiceIpc();
-  registerGlobalShortcuts();
-  runner.start();
+}
+
+async function startBackend() {
+  if (runner && localServer && localPort) return;
+  if (backendStartPromise) return backendStartPromise;
+
+  let startingRunner;
+  let startingServer;
+  backendStartPromise = (async () => {
+    const dataDirectory = dataDirectoryForApp();
+    fs.mkdirSync(dataDirectory, { recursive: true });
+    windowStateDirectory = dataDirectory;
+    persistedWindowState = loadWindowState(dataDirectory);
+    positionedResultDisplayKey = null;
+    positionedPreviousResultDisplayKey = null;
+    positionedVoiceResultDisplayKey = null;
+    positionedVoiceMemoryResultDisplayKey = null;
+    const settings = loadSettings(dataDirectory);
+    const memory = new LocalMemory(dataDirectory, { maxEntries: settings.memoryMaxEntries });
+    const nextRunner = new MonitorRunner({
+      dataDirectory,
+      settings,
+      memory,
+      capture: captureWithoutAppWindows,
+      getDisplays: getDisplayList,
+      apiKeyReady: Boolean(process.env.OPENAI_API_KEY),
+      requestOpenAI: async ({ payload }) => requestOpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        payload
+      })
+    });
+    startingRunner = nextRunner;
+    nextRunner.setVoiceSession(new RealtimeVoiceSession({
+      apiKey: process.env.OPENAI_API_KEY,
+      onEvent: (event) => nextRunner.handleVoiceEvent(event),
+      onError: (error) => nextRunner.handleVoiceError(error)
+    }));
+
+    nextRunner.setDisplays(getDisplayList());
+    const nextApiToken = crypto.randomBytes(32).toString('hex');
+    const nextServer = createLocalServer({ runner: nextRunner, publicDirectory, memory, authToken: nextApiToken });
+    startingServer = nextServer;
+    const nextPort = await listen(nextServer, process.env.MONITOR_PORT || 4317);
+
+    runner = nextRunner;
+    localServer = nextServer;
+    localPort = nextPort;
+    localApiToken = nextApiToken;
+    registerVoiceIpc();
+    registerGlobalShortcuts();
+    registerDisplayEvents();
+    subscribeToRunner();
+    runner.start();
+  })().catch((error) => {
+    startingRunner?.stop();
+    try { startingServer?.close(); } catch {}
+    if (runner === startingRunner) runner = undefined;
+    if (localServer === startingServer) localServer = undefined;
+    if (localServer === undefined) {
+      localPort = undefined;
+      localApiToken = undefined;
+    }
+    throw error;
+  }).finally(() => {
+    backendStartPromise = null;
+  });
+  return backendStartPromise;
+}
+
+async function ensureWindow({ name, options, route }) {
+  const existing = windowForName(name);
+  if (existing && !existing.isDestroyed()) return existing;
+
+  const window = createWindow(options);
+  setWindowForName(name, window);
+  bindWindowBounds(name, window);
+  if (name === 'control') {
+    configureMicrophonePermissions(window);
+    configureLocalRequestHeaders(window);
+  }
+  try {
+    await window.loadURL(`http://127.0.0.1:${localPort}${route}`);
+    return window;
+  } catch (error) {
+    if (!window.isDestroyed()) window.destroy();
+    throw error;
+  }
+}
+
+async function ensureWindows() {
+  if (windowsStartPromise) return windowsStartPromise;
+  windowsStartPromise = (async () => {
+    if (!runner || !localServer || !localPort) await startBackend();
+    if (shuttingDown) return;
+
+    if (controlWindow && !controlWindow.isDestroyed()) {
+      configureMicrophonePermissions(controlWindow);
+      configureLocalRequestHeaders(controlWindow);
+    }
+    await ensureWindow({ name: 'control', options: { width: 1280, height: 980, title: 'Monitor GPT' }, route: '/' });
+    await ensureWindow({ name: 'result', options: { width: 1280, height: 800, title: 'Monitor GPT · Result' }, route: '/result' });
+    await ensureWindow({ name: 'previous', options: { width: 1280, height: 800, title: 'Monitor GPT · Previous Result' }, route: '/result?view=previous' });
+    await ensureWindow({ name: 'voice', options: { width: 1280, height: 800, title: 'Monitor GPT · Voice' }, route: '/voice' });
+    await ensureWindow({ name: 'voice-memory', options: { width: 1280, height: 800, title: 'Monitor GPT · Voice Memory' }, route: '/voice?view=memory' });
+
+    restoreControlWindow();
+    positionResultWindow();
+    positionPreviousResultWindow();
+    positionVoiceResultWindow();
+    positionVoiceMemoryResultWindow();
+    controlWindow?.show();
+    resultWindow?.showInactive();
+    voiceResultWindow?.showInactive();
+    voiceMemoryResultWindow?.showInactive();
+    positionPreviousResultWindow();
+  })().finally(() => {
+    windowsStartPromise = null;
+  });
+  return windowsStartPromise;
+}
+
+async function startApp() {
+  if (shuttingDown) return;
+  await startBackend();
+  await ensureWindows();
 }
 
 app.whenReady().then(startApp).catch((error) => {
@@ -485,17 +742,22 @@ app.whenReady().then(startApp).catch((error) => {
 });
 
 app.on('activate', () => {
-  if (!controlWindow || controlWindow.isDestroyed()) startApp();
-  else controlWindow.show();
+  void startApp().catch((error) => {
+    console.error('Could not reactivate Monitor GPT:', error);
+  });
 });
 
 app.on('window-all-closed', () => {
+  void runner?.stopVoice({ graceful: false });
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', flushWindowState);
 
 app.on('will-quit', () => {
+  shuttingDown = true;
+  if (displayRefreshTimer) clearTimeout(displayRefreshTimer);
+  displayRefreshTimer = null;
   flushWindowState();
   for (const accelerator of registeredAccelerators) globalShortcut.unregister(accelerator);
   registeredAccelerators = [];
