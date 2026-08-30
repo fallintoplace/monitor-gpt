@@ -15,7 +15,7 @@
       </div>
       <div class="header-actions">
         <span id="api-status" class="status-pill">● API key not configured</span>
-        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A / End / PageDown · Analyze · PageUp · Voice</span>
+        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A / End / PageDown · Screen · Home / PageUp · Voice</span>
       </div>
     </header>
 
@@ -109,7 +109,7 @@
               <option value="click-hotkeys">Click + global hotkeys</option>
               <option value="auto">Automatic polling</option>
             </select>
-            <small id="trigger-mode-help">Screen hotkeys are enabled for this mode. Page Up controls voice listening.</small>
+            <small id="trigger-mode-help">Screen hotkeys are enabled for this mode. End and Page Down analyze; Home and Page Up control voice listening.</small>
           </label>
         </div>
 
@@ -204,7 +204,7 @@
           </div>
           <span id="voice-status" class="status-pill">Microphone off</span>
         </div>
-        <p id="voice-help" class="panel-description">Page Up toggles the microphone. A natural pause ends the sentence, then separate voice and combined answers appear. The combined answer includes a fresh screenshot from the selected source display.</p>
+        <p id="voice-help" class="panel-description">Home or Page Up toggles the microphone. A natural pause ends the sentence, then separate voice and combined answers appear. The combined answer includes a fresh screenshot from the selected source display.</p>
         <div class="form-grid two-up compact-grid">
           <label>
             <span>Voice answer model</span>
@@ -251,7 +251,7 @@
           <label>
             <span>Combined answer display</span>
             <select id="combined-result-display"></select>
-            <small>Home shows and focuses the separate combined answer window. This setting is independent from the voice display.</small>
+            <small>End and Page Down refresh the screen context used by the separate combined answer window. This setting is independent from the voice display.</small>
           </label>
         </div>
         <div class="form-grid two-up compact-grid">
@@ -297,7 +297,7 @@
         <div class="action-row">
           <button id="save-voice-settings" class="secondary-button" type="button">Save voice settings</button>
           <button id="voice-enable" class="primary-button" type="button" disabled>Enable microphone</button>
-          <span id="voice-hotkey" class="inline-status">Page Up · voice</span>
+          <span id="voice-hotkey" class="inline-status">Home / Page Up · voice</span>
         </div>
       </section>
 

@@ -460,7 +460,7 @@
     }
     try {
       await startVoiceCapture();
-      setControlStatus('Microphone listening. Page Up toggles it.', 'ready');
+      setControlStatus('Microphone listening. Home or Page Up toggles it.', 'ready');
     } catch (error) {
       setControlStatus(error.message || 'Could not start the microphone.', 'error');
     }
@@ -474,18 +474,17 @@
     $('api-status').classList.toggle('ready', nextState.apiKeyReady);
     const analysisHotkeys = nextState.hotkeys?.analysis?.length ? nextState.hotkeys.analysis.join(' · ') : 'No screen hotkey';
     const voiceHotkeys = nextState.hotkeys?.voice?.length ? nextState.hotkeys.voice.join(' · ') : 'No voice hotkey';
-    const combinedHotkeys = nextState.hotkeys?.combined?.length ? nextState.hotkeys.combined.join(' · ') : 'No combined hotkey';
-    $('hotkey-pill').textContent = `${analysisHotkeys} · screen · ${voiceHotkeys} · voice · ${combinedHotkeys} · combined`;
+    $('hotkey-pill').textContent = `${analysisHotkeys} · screen · ${voiceHotkeys} · voice · combined follows screen`;
     const triggerModeHelp = {
-      click: 'The Analyze button triggers screen analysis. Page Up controls voice listening.',
-      hotkeys: 'Global screen hotkeys trigger analysis. The Analyze button remains available. Page Up controls voice listening.',
-      'click-hotkeys': 'The Analyze button and global screen hotkeys trigger analysis. Page Up controls voice listening.',
-      auto: 'Screen analysis runs automatically at the interval below. Page Up controls voice listening.'
+      click: 'The Analyze button triggers screen analysis. Home and Page Up control voice listening.',
+      hotkeys: 'Global screen hotkeys trigger analysis. The Analyze button remains available. Home and Page Up control voice listening.',
+      'click-hotkeys': 'The Analyze button and global screen hotkeys trigger analysis. Home and Page Up control voice listening.',
+      auto: 'Screen analysis runs automatically at the interval below. Home and Page Up control voice listening.'
     };
     $('trigger-mode-help').textContent = triggerModeHelp[nextState.settings.triggerMode] || triggerModeHelp.click;
     $('voice-help').textContent = nextState.settings.voiceScreenContextEnabled
-      ? 'Page Up toggles the microphone. A natural pause ends the sentence, then separate voice and combined answers appear. The combined answer includes a fresh screenshot from the selected source display.'
-      : 'Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screen context is off, so voice questions stay text-only.';
+      ? 'Home or Page Up toggles the microphone. A natural pause ends the sentence, then separate voice and combined answers appear. End and Page Down refresh the screen context used by the combined answer.'
+      : 'Home or Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screen context is off, so voice questions stay text-only.';
     const status = nextState.status || 'ready';
     $('output-status').textContent = status;
     $('output-status').className = `status-pill ${status === 'error' ? 'error' : status === 'analyzing' || status === 'capturing' ? 'analyzing' : 'ready'}`;
@@ -514,7 +513,7 @@
     $('voice-status').className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
     $('voice-enable').textContent = voice.enabled ? 'Stop listening' : 'Enable microphone';
     $('voice-enable').disabled = !nextState.apiKeyReady || !window.monitorApp?.voice;
-    $('voice-hotkey').textContent = `${voiceHotkeys} · voice · ${combinedHotkeys} · combined`;
+    $('voice-hotkey').textContent = `${voiceHotkeys} · voice · combined follows screen`;
     $('stop-monitoring').textContent = nextState.monitoring ? 'Stop monitoring' : 'Start monitoring';
     if (voice.enabled && !voiceCapture && !voiceCapturePromise) {
       void startVoiceCapture().catch((error) => setControlStatus(error.message || 'Could not start the microphone.', 'error'));

@@ -590,8 +590,7 @@ function registerGlobalShortcuts() {
       'PageDown'
     ] : [];
   registeredTriggerMode = runner?.snapshot?.().settings?.triggerMode || null;
-  const voice = ['PageUp'];
-  const combined = ['Home'];
+  const voice = ['Home', 'PageUp'];
   const registeredAnalysis = [];
   for (const accelerator of analysis) {
     try {
@@ -619,19 +618,7 @@ function registerGlobalShortcuts() {
     }
   }
 
-  const registeredCombined = [];
-  for (const accelerator of combined) {
-    try {
-      if (globalShortcut.register(accelerator, () => void showCombinedWindow())) {
-        registeredCombined.push(accelerator);
-        registeredAccelerators.push(accelerator);
-      }
-    } catch (error) {
-      console.warn(`Could not register ${accelerator}:`, error.message);
-    }
-  }
-
-  runner.setHotkeys({ analysis: registeredAnalysis, voice: registeredVoice, combined: registeredCombined });
+  runner.setHotkeys({ analysis: registeredAnalysis, voice: registeredVoice, combined: [] });
 }
 
 function requestVoiceToggle() {
@@ -640,18 +627,6 @@ function requestVoiceToggle() {
     return;
   }
   if (runner?.snapshot?.().voice?.enabled) void runner.stopVoice({ graceful: false });
-}
-
-async function showCombinedWindow() {
-  try {
-    if (!combinedResultWindow || combinedResultWindow.isDestroyed()) await ensureWindows();
-    if (!combinedResultWindow || combinedResultWindow.isDestroyed()) return;
-    positionCombinedResultWindow();
-    combinedResultWindow.show();
-    combinedResultWindow.focus();
-  } catch (error) {
-    console.warn('Could not show combined window:', error.message);
-  }
 }
 
 function registerDisplayEvents() {

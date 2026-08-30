@@ -86,6 +86,23 @@ test('should invalidate the unchanged-image cache when the latest analysis is de
   assert.equal(getCalls(), 2);
 });
 
+test('should refresh combined screen context when screen analysis runs', async () => {
+  const { runner, getCalls } = makeRunner({ answer: 'screen answer' });
+  runner.updateSettings({ voiceScreenContextEnabled: true });
+
+  const result = await runner.triggerAnalysis({ reason: 'hotkey:End' });
+  const state = runner.snapshot();
+
+  assert.equal(result.accepted, true);
+  assert.equal(state.result, 'screen answer');
+  assert.equal(getCalls(), 1);
+  assert.equal(state.combined.history.length, 0);
+  assert.equal(state.combined.answer, '');
+  assert.equal(state.combined.screenContext.sourceDisplayNumber, 1);
+  assert.equal(state.combined.screenContext.sourceLabel, 'Main display');
+  assert.equal(typeof state.combined.screenContext.captureAt, 'string');
+});
+
 test('should retry the same image after an API failure', async () => {
   let failures = 1;
   const { runner, getCalls } = makeRunner({

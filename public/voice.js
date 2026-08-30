@@ -151,7 +151,7 @@
     document.title = `Monitor GPT · ${combinedView ? 'Combined' : memoryView ? 'Voice Memory' : 'Voice'}`;
     document.querySelector('.result-label').textContent = viewLabel;
     $('voice-footer-mode').textContent = combinedView
-      ? 'COMBINED · HOME TO SHOW'
+      ? 'COMBINED · END/PAGEDOWN SCREEN SYNC'
       : memoryView
       ? 'VOICE MEMORY · PAGE UP TOGGLE'
       : 'VOICE · NO MEMORY · PAGE UP TOGGLE';
@@ -161,7 +161,10 @@
     status.innerHTML = `<span class="status-dot"></span> ${label}`;
     const display = combinedView ? state.combinedResultDisplay : state.voiceResultDisplay;
     $('voice-display').textContent = `${combinedView ? 'COMBINED DISPLAY' : 'VOICE DISPLAY'}: ${display?.label || '—'} · D${display?.captureNumber || '—'}`;
-    const updated = voice.completedAt || voice.updatedAt;
+    const screenContext = voice.screenContext || {};
+    const updated = combinedView
+      ? screenContext.captureAt || voice.completedAt || voice.updatedAt
+      : voice.completedAt || voice.updatedAt;
     $('voice-updated').textContent = updated
       ? `Updated ${new Date(updated).toLocaleTimeString()}`
       : combinedView && !state.settings?.voiceScreenContextEnabled ? 'Screen context off' : 'Microphone off';
@@ -169,10 +172,10 @@
 
     const context = $('voice-context');
     if (combinedView) {
-      const captureTime = voice.captureAt ? new Date(voice.captureAt).toLocaleTimeString() : '';
+      const captureTime = screenContext.captureAt ? new Date(screenContext.captureAt).toLocaleTimeString() : '';
       context.textContent = state.settings?.voiceScreenContextEnabled
         ? [
-          `SCREEN CONTEXT: ${voice.sourceLabel || state.sourceDisplay?.label || 'Selected source display'}`,
+          `SCREEN CONTEXT: ${screenContext.sourceLabel || state.sourceDisplay?.label || 'Selected source display'}`,
           captureTime ? `captured ${captureTime}` : 'waiting for capture'
         ].join(' · ')
         : 'SCREEN CONTEXT OFF · Enable it in the control window to create a combined answer.';
