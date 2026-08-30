@@ -34,6 +34,7 @@ let runner;
 let backendStartPromise = null;
 let windowsStartPromise = null;
 let registeredAccelerators = [];
+let registeredTriggerMode = null;
 let positionedResultDisplayKey = null;
 let positionedPreviousResultDisplayKey = null;
 let positionedVoiceResultDisplayKey = null;
@@ -389,7 +390,8 @@ async function captureWithoutAppWindows({ displayId, displayNumber, maxImageWidt
   const hiddenWindows = visibleWindowsOnDisplay(
     [controlWindow, resultWindow, previousResultWindow, voiceResultWindow, voiceMemoryResultWindow],
     sourceDisplay?.id,
-    (bounds) => screen.getDisplayMatching(bounds)
+    (bounds) => screen.getDisplayMatching(bounds),
+    sourceDisplay?.bounds
   );
   for (const window of hiddenWindows) window.hide();
   await new Promise((resolve) => setTimeout(resolve, 90));
@@ -537,12 +539,13 @@ function clearWindowReference(name, window) {
 function registerGlobalShortcuts() {
   for (const accelerator of registeredAccelerators) globalShortcut.unregister(accelerator);
   registeredAccelerators = [];
-  const analysis = [
-    'Command+Shift+A',
-    'Control+Shift+A',
-    'End',
-    'PageDown'
-  ];
+  const analysis = runner?.screenHotkeysEnabled?.() ? [
+      'Command+Shift+A',
+      'Control+Shift+A',
+      'End',
+      'PageDown'
+    ] : [];
+  registeredTriggerMode = runner?.snapshot?.().settings?.triggerMode || null;
   const voice = ['PageUp'];
   const registeredAnalysis = [];
   for (const accelerator of analysis) {
@@ -604,6 +607,7 @@ function registerDisplayEvents() {
 
 function subscribeToRunner() {
   runner.subscribe((snapshot) => {
+    if (registeredTriggerMode !== snapshot.settings.triggerMode) registerGlobalShortcuts();
     positionResultWindow();
     positionPreviousResultWindow();
     positionVoiceResultWindow();
@@ -761,6 +765,7 @@ app.on('will-quit', () => {
   flushWindowState();
   for (const accelerator of registeredAccelerators) globalShortcut.unregister(accelerator);
   registeredAccelerators = [];
+  registeredTriggerMode = null;
   runner?.stop();
   if (localServer) localServer.close();
 });

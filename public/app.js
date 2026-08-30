@@ -52,6 +52,13 @@
         value: String(display.id),
         label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}${display.isPrimary ? ' · primary' : ''}`
       }));
+      const selectedSourceId = String(nextState.settings.sourceDisplayId || '');
+      if (selectedSourceId && !options.some((option) => option.value === selectedSourceId)) {
+        options.unshift({
+          value: selectedSourceId,
+          label: 'Selected display unavailable · reconnect or choose another'
+        });
+      }
       setSelectOptions($('source-display'), options, nextState.settings.sourceDisplayId || nextState.settings.sourceDisplayNumber);
       const resultOptions = (nextState.displays || []).map((display) => ({
         value: String(display.id),
@@ -457,6 +464,13 @@
     const analysisHotkeys = nextState.hotkeys?.analysis?.length ? nextState.hotkeys.analysis.join(' · ') : 'No screen hotkey';
     const voiceHotkeys = nextState.hotkeys?.voice?.length ? nextState.hotkeys.voice.join(' · ') : 'No voice hotkey';
     $('hotkey-pill').textContent = `${analysisHotkeys} · screen · ${voiceHotkeys} · voice`;
+    const triggerModeHelp = {
+      click: 'The Analyze button triggers screen analysis. Page Up controls voice listening.',
+      hotkeys: 'Global screen hotkeys trigger analysis. The Analyze button remains available. Page Up controls voice listening.',
+      'click-hotkeys': 'The Analyze button and global screen hotkeys trigger analysis. Page Up controls voice listening.',
+      auto: 'Screen analysis runs automatically at the interval below. Page Up controls voice listening.'
+    };
+    $('trigger-mode-help').textContent = triggerModeHelp[nextState.settings.triggerMode] || triggerModeHelp.click;
     const status = nextState.status || 'ready';
     $('output-status').textContent = status;
     $('output-status').className = `status-pill ${status === 'error' ? 'error' : status === 'analyzing' || status === 'capturing' ? 'analyzing' : 'ready'}`;

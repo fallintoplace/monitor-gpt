@@ -86,7 +86,7 @@ test('should refresh the display list before returning it', async () => {
   assert.equal(response.status, 200);
   const body = JSON.parse(response.body);
   assert.deepEqual(body.displays, displays);
-  assert.equal(body.settings.sourceDisplayId, 'display-2');
+  assert.equal(body.settings.sourceDisplayId, 'display-1');
   server.close();
 });
 

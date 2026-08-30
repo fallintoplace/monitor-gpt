@@ -30,6 +30,10 @@ function makeRunner(options = {}) {
   return { runner, memory, getCalls: () => calls };
 }
 
+function flushPromises() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 test('should publish capturing state before the API call', async () => {
   const { runner } = makeRunner();
   const states = [];
@@ -131,6 +135,28 @@ test('should fall back to a real display when a persisted display is missing', (
   assert.equal(runner.snapshot().settings.resultDisplayId, 'real-display');
 });
 
+test('should preserve a missing stable source display until it returns', () => {
+  const { runner } = makeRunner();
+  runner.updateSettings({ sourceDisplayId: 'display-2' });
+  runner.setDisplays([
+    { id: 'display-1', captureNumber: 1, label: 'Main display', width: 100, height: 100 },
+    { id: 'display-3', captureNumber: 2, label: 'External display 2', width: 100, height: 100 }
+  ]);
+
+  assert.equal(runner.snapshot().sourceDisplay, null);
+  assert.equal(runner.snapshot().settings.sourceDisplayId, 'display-2');
+  assert.equal(runner.snapshot().settings.sourceDisplayNumber, 2);
+
+  runner.setDisplays([
+    { id: 'display-1', captureNumber: 1, label: 'Main display', width: 100, height: 100 },
+    { id: 'display-3', captureNumber: 2, label: 'External display 2', width: 100, height: 100 },
+    { id: 'display-2', captureNumber: 3, label: 'External display 1', width: 100, height: 100 }
+  ]);
+
+  assert.equal(runner.snapshot().sourceDisplay.id, 'display-2');
+  assert.equal(runner.snapshot().settings.sourceDisplayNumber, 3);
+});
+
 test('should keep the selected source display by stable id when display order changes', async () => {
   let captured;
   const { runner } = makeRunner({
@@ -164,7 +190,7 @@ test('should convert legacy display numbers to stable display ids', () => {
   assert.equal(runner.snapshot().settings.previousResultDisplayId, 'stable-external');
 });
 
-test('should refresh displays from the current display provider', () => {
+test('should keep a missing stable source display unavailable during refresh', () => {
   let displays = [
     { id: 'display-1', captureNumber: 1, label: 'Main display', width: 100, height: 100 }
   ];
@@ -183,7 +209,22 @@ test('should refresh displays from the current display provider', () => {
     { id: 'display-2', captureNumber: 1, label: 'External display 1', width: 200, height: 100 }
   ];
   assert.deepEqual(runner.refreshDisplays(), displays);
-  assert.equal(runner.snapshot().sourceDisplay.id, 'display-2');
+  assert.equal(runner.snapshot().sourceDisplay, null);
+  assert.equal(runner.snapshot().settings.sourceDisplayId, 'display-1');
+});
+
+test('should enable screen hotkeys only for hotkey trigger modes', () => {
+  const { runner } = makeRunner();
+
+  for (const [mode, enabled] of [
+    ['click', false],
+    ['hotkeys', true],
+    ['click-hotkeys', true],
+    ['auto', false]
+  ]) {
+    runner.updateSettings({ triggerMode: mode });
+    assert.equal(runner.screenHotkeysEnabled(), enabled, `trigger mode ${mode}`);
+  }
 });
 
 test('should route a completed voice transcript to a text-only answer', async () => {
@@ -351,6 +392,97 @@ test('should show translating while a voice answer is pending', async () => {
   releaseAnswer({ text: 'Idempotency means repeating the same request has the same effect.' });
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(runner.snapshot().voice.status, 'on');
+});
+
+test('should not persist a screen answer when memory is cleared during the request', async () => {
+  let releaseAnswer;
+  const pendingAnswer = new Promise((resolve) => { releaseAnswer = resolve; });
+  const { runner, memory } = makeRunner({
+    requestOpenAI: async () => pendingAnswer
+  });
+
+  const analysis = runner.triggerAnalysis({ promptOverride: 'pending question' });
+  await flushPromises();
+  runner.clearMemory();
+  releaseAnswer({ text: 'late answer' });
+  await analysis;
+
+  assert.equal(memory.summary().count, 0);
+});
+
+test('should not persist a voice answer when memory is disabled during the request', async () => {
+  let releaseAnswer;
+  const pendingAnswer = new Promise((resolve) => { releaseAnswer = resolve; });
+  const { runner, memory } = makeRunner({
+    requestOpenAI: async ({ channel }) => channel === 'voice' ? pendingAnswer : { text: 'unused' }
+  });
+  runner.updateSettings({ voiceMemoryEnabled: false });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-memory-race',
+    transcript: 'What is CORS?'
+  });
+  await flushPromises();
+
+  runner.updateSettings({ memoryEnabled: false });
+  releaseAnswer({ text: 'CORS controls cross-origin browser requests.' });
+  await flushPromises();
+  await flushPromises();
+
+  assert.equal(memory.list().length, 0);
+});
+
+test('should ignore an old voice answer after a non-graceful restart', async () => {
+  let releaseOldAnswer;
+  const oldAnswer = new Promise((resolve) => { releaseOldAnswer = resolve; });
+  let voiceCalls = 0;
+  const { runner } = makeRunner({
+    requestOpenAI: async ({ channel }) => {
+      if (channel !== 'voice') return { text: 'unused' };
+      voiceCalls += 1;
+      return voiceCalls === 1 ? oldAnswer : { text: 'new session answer' };
+    }
+  });
+  runner.updateSettings({ voiceMemoryEnabled: false });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-old-session',
+    transcript: 'Old session question'
+  });
+  await flushPromises();
+
+  await runner.stopVoice({ graceful: false });
+  await runner.startVoice();
+  releaseOldAnswer({ text: 'old session answer' });
+  await flushPromises();
+  await flushPromises();
+
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-new-session',
+    transcript: 'New session question'
+  });
+  await flushPromises();
+  await flushPromises();
+
+  assert.equal(runner.snapshot().voice.answer, 'new session answer');
+  assert.deepEqual(runner.snapshot().voice.history.map((entry) => entry.answer), ['new session answer']);
 });
 
 test('should only commit a voice buffer after audio was sent', async () => {

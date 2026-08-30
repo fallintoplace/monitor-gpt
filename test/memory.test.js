@@ -20,6 +20,13 @@ test('should keep only the configured number of old answers', () => {
   assert.doesNotMatch(memory.getContext(2), /answer one/);
 });
 
+test('should send no previous answers when the context limit is zero', () => {
+  const memory = new LocalMemory(tempDirectory(), { maxEntries: 30 });
+  memory.addAnalysis({ prompt: 'one', answer: 'private old answer' });
+
+  assert.equal(memory.getContext(0), '');
+});
+
 test('should save the latest screenshot separately from text memory', () => {
   const directory = tempDirectory();
   const memory = new LocalMemory(directory, { maxEntries: 30 });
