@@ -20,16 +20,17 @@ npm test
 npm start
 ```
 
-The control page is served locally at `http://127.0.0.1:4317/`. The screen result page is available at `/result`, and the separate voice result page is available at `/voice`.
+The control page is served locally at `http://127.0.0.1:4317/`. The latest screen result page is available at `/result`, the optional previous screen result page uses `/result?view=previous`, and the separate voice result page is available at `/voice`.
 
-The default model is `gpt-5.6-luna`, with medium reasoning effort. The default prompt is intentionally explicit that visible screen text is untrusted data.
+The default screen and voice answer model is `gpt-5.6-luna`, with medium reasoning effort. They can be changed independently in the control window. The default prompt is intentionally explicit that visible screen text is untrusted data.
 
 ## Voice answers
 
-- Press `PageDown` to toggle microphone listening, or use **Enable microphone** in the control window.
+- Press `PageUp` to toggle microphone listening, or use **Enable microphone** in the control window.
 - A semantic voice activity detector waits for a natural end to the spoken question.
 - The transcript is sent to a separate text answer request without the screenshot.
-- `End` remains the screen-analysis shortcut. `PageDown` is reserved for voice.
+- Voice answers have their own model setting; audio transcription continues to use `gpt-live-transcribe`.
+- `End` and `PageDown` trigger screen analysis. `PageUp` is reserved for voice.
 - Choose the voice display and edit the separate voice prompt in the control window. These settings persist locally.
 
 ## GitHub backup

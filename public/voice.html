@@ -21,19 +21,22 @@
       </header>
 
       <section class="voice-result-content">
-        <article class="voice-card">
-          <p class="eyebrow">HEARD</p>
-          <p id="voice-transcript" class="voice-transcript">Say a question and pause naturally.</p>
-        </article>
-        <article class="voice-card voice-answer-card">
-          <p class="eyebrow">ANSWER</p>
-          <div id="voice-answer" class="voice-answer">Your voice answer will appear here.</div>
-          <div id="voice-error" class="result-error hidden"></div>
-        </article>
+        <div id="voice-history" class="voice-history" aria-live="polite"></div>
+        <div id="voice-live" class="voice-live">
+          <article class="voice-card">
+            <p class="eyebrow">HEARD</p>
+            <p id="voice-transcript" class="voice-transcript">Say a question and pause naturally.</p>
+          </article>
+          <article class="voice-card voice-answer-card">
+            <p class="eyebrow">ANSWER</p>
+            <div id="voice-answer" class="voice-answer">Your voice answer will appear here.</div>
+            <div id="voice-error" class="result-error hidden"></div>
+          </article>
+        </div>
       </section>
 
       <footer class="result-footer">
-        <span>VOICE LISTENING · PAGE DOWN TOGGLE</span>
+        <span>VOICE LISTENING · PAGE UP TOGGLE</span>
         <span id="voice-footer-status">MICROPHONE OFF</span>
       </footer>
     </main>

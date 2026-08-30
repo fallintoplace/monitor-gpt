@@ -47,6 +47,8 @@ test('should serve state and accept a non-blocking analyze request', async () =>
   const result = await request(port, '/result');
   assert.equal(result.status, 200);
   assert.match(result.body, /Monitor GPT · Result/);
+  const previousResult = await request(port, '/result?view=previous');
+  assert.equal(previousResult.status, 200);
   const voice = await request(port, '/voice');
   assert.equal(voice.status, 200);
   assert.match(voice.body, /Monitor GPT · Voice/);

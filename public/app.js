@@ -11,6 +11,16 @@
   let voiceCapturePromise = null;
   let voiceCaptureGeneration = 0;
   let voiceWanted = false;
+  let audioDevicesLoaded = false;
+  const VOICE_PAUSE_MS = Object.freeze({
+    server: 450,
+    'semantic-auto': 650,
+    'semantic-low': 950
+  });
+  const VOICE_THRESHOLD = 0.012;
+  const VOICE_PREROLL_MS = 240;
+  const VOICE_START_MS = 100;
+  let voiceVad = null;
 
   function displaySignature(displays) {
     return (displays || []).map((display) => `${display.id}:${display.captureNumber}:${display.width}x${display.height}`).join('|');
@@ -47,11 +57,52 @@
         label: `${display.label} · D${display.captureNumber} · ${display.width}×${display.height}`
       }));
       setSelectOptions($('result-display'), resultOptions, nextState.settings.resultDisplayId);
+      setSelectOptions($('previous-result-display'), [
+        { value: 'auto', label: 'Automatic · show as a movable window' },
+        { value: 'off', label: 'Off · hide previous-answer window' },
+        ...resultOptions
+      ], nextState.settings.previousResultDisplayId);
       setSelectOptions($('voice-result-display'), resultOptions, nextState.settings.voiceResultDisplayId);
+    }
+    const previousDisplay = $('previous-result-display');
+    if (previousDisplay && document.activeElement !== previousDisplay) {
+      previousDisplay.value = String(nextState.settings.previousResultDisplayId || '');
     }
     const voiceDisplay = $('voice-result-display');
     if (voiceDisplay && document.activeElement !== voiceDisplay && nextState.settings.voiceResultDisplayId) {
       voiceDisplay.value = String(nextState.settings.voiceResultDisplayId);
+    }
+  }
+
+  async function refreshAudioDevices(selectedDeviceId = $('voice-audio-device')?.value || '') {
+    const select = $('voice-audio-device');
+    if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+    let devices;
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch {
+      return;
+    }
+    const inputs = devices.filter((device) => device.kind === 'audioinput' && device.deviceId);
+    const seen = new Set();
+    const options = [{ value: '', label: 'Default microphone' }];
+    for (const device of inputs) {
+      if (seen.has(device.deviceId)) continue;
+      seen.add(device.deviceId);
+      options.push({
+        value: device.deviceId,
+        label: device.label || `Microphone ${seen.size}`
+      });
+    }
+    const signature = options.map((option) => `${option.value}:${option.label}`).join('|');
+    if (!audioDevicesLoaded || select.dataset.deviceSignature !== signature) {
+      setSelectOptions(select, options, selectedDeviceId);
+      select.dataset.deviceSignature = signature;
+      audioDevicesLoaded = true;
+    } else if (document.activeElement !== select && selectedDeviceId !== undefined) {
+      select.value = options.some((option) => option.value === String(selectedDeviceId))
+        ? String(selectedDeviceId)
+        : '';
     }
   }
 
@@ -71,9 +122,12 @@
     if (force || document.activeElement !== $('prompt')) setValue('prompt', settings.prompt);
     if (force || document.activeElement !== $('model')) setValue('model', settings.model);
     setValue('custom-model', settings.customModel);
+    setValue('voice-model', settings.voiceModel);
+    setValue('voice-custom-model', settings.voiceCustomModel);
     setValue('reasoning', settings.reasoning);
     setValue('image-detail', settings.imageDetail);
     setValue('trigger-mode', settings.triggerMode);
+    setValue('screen-answer-language', settings.screenAnswerLanguage);
     setValue('analyze-every', Math.round(settings.analyzeEveryMs / 1000));
     setValue('result-poll', settings.resultPollMs);
     setValue('max-image-width', settings.maxImageWidth);
@@ -83,12 +137,16 @@
     if (force || document.activeElement !== $('voice-prompt')) setValue('voice-prompt', settings.voicePrompt);
     setValue('voice-turn-detection', settings.voiceTurnDetection);
     setValue('voice-transcription-delay', settings.voiceTranscriptionDelay);
+    setValue('voice-audio-device', settings.voiceAudioDeviceId);
+    setValue('voice-font-size', settings.voiceFontSizePx);
+    setValue('voice-answer-language', settings.voiceAnswerLanguage);
     $('skip-unchanged').checked = Boolean(settings.skipUnchanged);
     $('result-autofit').checked = Boolean(settings.resultAutoFit);
     $('memory-enabled').checked = Boolean(settings.memoryEnabled);
     setValue('memory-max', settings.memoryMaxEntries);
     setValue('memory-context', settings.memoryContextAnswers);
     $('custom-model-wrap').classList.toggle('hidden', settings.model !== 'custom');
+    $('voice-custom-model-wrap').classList.toggle('hidden', settings.voiceModel !== 'custom');
     applyTheme(settings.theme);
   }
 
@@ -97,9 +155,12 @@
       prompt: $('prompt').value,
       model: $('model').value,
       customModel: $('custom-model').value,
+      voiceModel: $('voice-model').value,
+      voiceCustomModel: $('voice-custom-model').value,
       reasoning: $('reasoning').value,
       imageDetail: $('image-detail').value,
       triggerMode: $('trigger-mode').value,
+      screenAnswerLanguage: $('screen-answer-language').value,
       analyzeEveryMs: Math.max(1, Number($('analyze-every').value || 15)) * 1000,
       resultPollMs: Math.max(250, Number($('result-poll').value || 1000)),
       maxImageWidth: Math.max(0, Number($('max-image-width').value || 0)),
@@ -113,14 +174,18 @@
       memoryContextAnswers: Math.max(0, Number($('memory-context').value || 0)),
       sourceDisplayNumber: Number($('source-display').value || 1),
       resultDisplayId: $('result-display').value || '',
+      previousResultDisplayId: $('previous-result-display').value || '',
       voiceResultDisplayId: $('voice-result-display').value || '',
       voicePrompt: $('voice-prompt').value,
       voiceTurnDetection: $('voice-turn-detection').value,
-      voiceTranscriptionDelay: $('voice-transcription-delay').value
+      voiceTranscriptionDelay: $('voice-transcription-delay').value,
+      voiceAudioDeviceId: $('voice-audio-device').value || '',
+      voiceFontSizePx: Math.max(10, Number($('voice-font-size').value || 16)),
+      voiceAnswerLanguage: $('voice-answer-language').value
     };
   }
 
-  async function saveSettings(showStatus = true) {
+  async function saveSettings(showStatus = true, statusMessage = 'Settings saved locally.') {
     const response = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -128,7 +193,7 @@
     });
     if (!response.ok) throw new Error('Could not save settings.');
     const data = await response.json();
-    if (showStatus) setControlStatus('Settings saved locally.', 'ready');
+    if (showStatus) setControlStatus(statusMessage, 'ready');
     applySettings(data.settings, true);
   }
 
@@ -167,9 +232,95 @@
     return output;
   }
 
+  function audioRms(samples) {
+    let total = 0;
+    for (let index = 0; index < samples.length; index += 1) total += samples[index] * samples[index];
+    return Math.sqrt(total / Math.max(1, samples.length));
+  }
+
+  function voicePauseMs() {
+    return VOICE_PAUSE_MS[state?.settings?.voiceTurnDetection] || VOICE_PAUSE_MS['semantic-auto'];
+  }
+
+  function createVoiceVad() {
+    return {
+      active: false,
+      committing: false,
+      sentAudio: false,
+      speechMs: 0,
+      lastSpeechAt: 0,
+      noiseFloor: VOICE_THRESHOLD / 3,
+      preroll: [],
+      prerollMs: 0
+    };
+  }
+
+  function sendVoiceAudioChunk(audio) {
+    if (!audio?.byteLength) return false;
+    const sent = Boolean(window.monitorApp?.voice?.sendAudio?.(audio));
+    if (sent && voiceVad) voiceVad.sentAudio = true;
+    return sent;
+  }
+
+  async function commitVoiceTurn() {
+    const vad = voiceVad;
+    if (!vad?.sentAudio || vad.committing) return false;
+    vad.committing = true;
+    vad.active = false;
+    try {
+      return Boolean(await window.monitorApp?.voice?.commit?.());
+    } finally {
+      if (voiceVad === vad) {
+        vad.committing = false;
+        vad.sentAudio = false;
+        vad.speechMs = 0;
+        vad.lastSpeechAt = 0;
+        vad.preroll = [];
+        vad.prerollMs = 0;
+      }
+    }
+  }
+
+  function handleVoiceChunk(input, audio, durationMs) {
+    const vad = voiceVad;
+    if (!vad || vad.committing) return;
+
+    const level = audioRms(input);
+    const now = performance.now();
+    const threshold = Math.max(VOICE_THRESHOLD, vad.noiseFloor * 3.2);
+    const voiced = level > threshold;
+    if (level < threshold) vad.noiseFloor = vad.noiseFloor * 0.96 + level * 0.04;
+
+    if (!vad.active) {
+      vad.preroll.push({ audio, durationMs });
+      vad.prerollMs += durationMs;
+      while (vad.preroll.length > 1 && vad.prerollMs > VOICE_PREROLL_MS) {
+        vad.prerollMs -= vad.preroll.shift().durationMs;
+      }
+      vad.speechMs = voiced ? vad.speechMs + durationMs : 0;
+      if (vad.speechMs >= VOICE_START_MS) {
+        vad.active = true;
+        vad.lastSpeechAt = now;
+        for (const chunk of vad.preroll) sendVoiceAudioChunk(chunk.audio);
+        vad.preroll = [];
+        vad.prerollMs = 0;
+        vad.speechMs = 0;
+      }
+      return;
+    }
+
+    sendVoiceAudioChunk(audio);
+    if (voiced) {
+      vad.lastSpeechAt = now;
+      return;
+    }
+    if (now - vad.lastSpeechAt >= voicePauseMs()) void commitVoiceTurn();
+  }
+
   async function stopVoiceCapture() {
     voiceWanted = false;
     voiceCaptureGeneration += 1;
+    await commitVoiceTurn();
     const capture = voiceCapture;
     voiceCapture = null;
     if (capture) {
@@ -180,6 +331,7 @@
       for (const track of capture.stream.getTracks()) track.stop();
       await capture.audioContext.close().catch(() => {});
     }
+    voiceVad = null;
     const stopSession = window.monitorApp?.voice?.stop;
     if (stopSession) await stopSession().catch(() => {});
   }
@@ -193,14 +345,31 @@
       if (!window.monitorApp?.voice || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Microphone capture is not available in this app window.');
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      const requestedDeviceId = $('voice-audio-device')?.value || '';
+      const audio = {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      };
+      if (requestedDeviceId) audio.deviceId = { exact: requestedDeviceId };
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio });
+      } catch (error) {
+        if (!requestedDeviceId || !['OverconstrainedError', 'NotFoundError'].includes(error.name)) throw error;
+        setValue('voice-audio-device', '');
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+      }
+      audioDevicesLoaded = false;
+      void refreshAudioDevices(requestedDeviceId);
       let audioContext;
       let source;
       let processor;
@@ -223,6 +392,7 @@
           await window.monitorApp.voice.stop().catch(() => {});
           return;
         }
+        voiceVad = createVoiceVad();
         source = audioContext.createMediaStreamSource(stream);
         if (!audioContext.createScriptProcessor) throw new Error('This app window does not support microphone processing.');
         processor = audioContext.createScriptProcessor(2048, 1, 1);
@@ -231,13 +401,14 @@
         processor.onaudioprocess = (event) => {
           const input = event.inputBuffer.getChannelData(0);
           const ready = resample(input, audioContext.sampleRate);
-          window.monitorApp.voice.sendAudio(pcm16(ready).buffer);
+          handleVoiceChunk(input, pcm16(ready).buffer, input.length / audioContext.sampleRate * 1000);
         };
         source.connect(processor);
         processor.connect(silent);
         silent.connect(audioContext.destination);
         voiceCapture = { stream, audioContext, source, processor, silent };
       } catch (error) {
+        voiceVad = null;
         for (const track of stream.getTracks()) track.stop();
         if (audioContext) await audioContext.close().catch(() => {});
         await window.monitorApp.voice.stop().catch(() => {});
@@ -256,7 +427,7 @@
     }
     try {
       await startVoiceCapture();
-      setControlStatus('Microphone listening. Page Down toggles it.', 'ready');
+      setControlStatus('Microphone listening. Page Up toggles it.', 'ready');
     } catch (error) {
       setControlStatus(error.message || 'Could not start the microphone.', 'error');
     }
@@ -291,11 +462,12 @@
       on: 'Microphone on',
       speaking: 'Listening…',
       transcribing: 'Transcribing…',
+      translating: 'Translating…',
       thinking: 'Answering…',
       error: 'Voice error'
     };
     $('voice-status').textContent = voice.error || voiceLabels[voice.status] || 'Microphone off';
-    $('voice-status').className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
+    $('voice-status').className = `status-pill ${voice.error || voice.status === 'error' ? 'error' : ['connecting', 'speaking', 'transcribing', 'translating', 'thinking'].includes(voice.status) ? 'analyzing' : 'ready'}`;
     $('voice-enable').textContent = voice.enabled ? 'Stop listening' : 'Enable microphone';
     $('voice-enable').disabled = !nextState.apiKeyReady || !window.monitorApp?.voice;
     $('voice-hotkey').textContent = `${voiceHotkeys} · voice`;
@@ -350,15 +522,17 @@
   }
 
   function bind() {
-    for (const id of ['prompt', 'model', 'custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'voice-result-display', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay']) {
+    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language']) {
       $(id).addEventListener('input', () => {
         if (id === 'model') $('custom-model-wrap').classList.toggle('hidden', $('model').value !== 'custom');
+        if (id === 'voice-model') $('voice-custom-model-wrap').classList.toggle('hidden', $('voice-model').value !== 'custom');
         if (id === 'theme') applyTheme($('theme').value);
         scheduleSave();
       });
       $(id).addEventListener('change', scheduleSave);
     }
     $('save-settings').addEventListener('click', () => void saveSettings(true).catch((error) => setControlStatus(error.message, 'error')));
+    $('save-voice-settings').addEventListener('click', () => void saveSettings(true, 'Voice settings saved locally.').catch((error) => setControlStatus(error.message, 'error')));
     $('analyze-now').addEventListener('click', async () => {
       try {
         await saveSettings(false);
@@ -367,6 +541,10 @@
       } catch (error) { setControlStatus(error.message, 'error'); }
     });
     $('voice-enable').addEventListener('click', () => void toggleVoiceCapture());
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+      audioDevicesLoaded = false;
+      void refreshAudioDevices($('voice-audio-device')?.value || '');
+    });
     $('stop-monitoring').addEventListener('click', async () => {
       try {
         await post(state?.monitoring ? '/api/stop' : '/api/start');
@@ -395,5 +573,6 @@
   }
 
   bind();
+  void refreshAudioDevices();
   poll();
 })();

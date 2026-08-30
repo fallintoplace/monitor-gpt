@@ -15,7 +15,7 @@
       </div>
       <div class="header-actions">
         <span id="api-status" class="status-pill">● API key not configured</span>
-        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A / End · Analyze · PageDown · Voice</span>
+        <span id="hotkey-pill" class="status-pill">⌘⇧A / ⌃⇧A / End / PageDown · Analyze · PageUp · Voice</span>
       </div>
     </header>
 
@@ -36,10 +36,18 @@
             <small>macOS capture order is shown as the D-number in each option.</small>
           </label>
           <label>
-            <span>Screen for the result</span>
+            <span>Screen for the latest result</span>
             <select id="result-display"></select>
             <small>The result window opens there and remains resizable.</small>
           </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Previous result window</span>
+            <select id="previous-result-display"></select>
+            <small>Always opens a separate window. Automatic uses a free display when available.</small>
+          </label>
+          <div class="settings-note"><strong>Fourth result window</strong><br>Move the automatic window wherever you want, or choose a display for it.</div>
         </div>
 
         <label class="prompt-label">
@@ -48,16 +56,25 @@
           <small>Visible text on the source screen is treated as untrusted data.</small>
         </label>
 
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Screen answer language</span>
+            <input id="screen-answer-language" type="text" maxlength="80" autocomplete="off" placeholder="English">
+            <small>Controls screenshot answers only. Use a language name such as English or Spanish.</small>
+          </label>
+          <div class="settings-note"><strong>Language is editable</strong><br>Voice answers have their own language setting below.</div>
+        </div>
+
         <div class="form-grid four-up">
           <label>
-            <span>Model</span>
+            <span>Screen answer model</span>
             <select id="model">
               <option value="gpt-5.6-luna">GPT-5.6 Luna · efficient</option>
               <option value="gpt-5.6-terra">GPT-5.6 Terra · balanced</option>
               <option value="gpt-5.6-sol">GPT-5.6 Sol · strongest</option>
               <option value="custom">Custom model</option>
             </select>
-            <small id="model-help">Luna is the efficient default for frequent checks.</small>
+            <small id="model-help">Used only for screenshot answers. Luna is the efficient default for frequent checks.</small>
           </label>
           <label id="custom-model-wrap" class="hidden">
             <span>Custom model ID</span>
@@ -92,7 +109,7 @@
               <option value="click-hotkeys">Click + global hotkeys</option>
               <option value="auto">Automatic polling</option>
             </select>
-            <small>End and the modifier shortcuts trigger screen analysis. Page Down controls voice listening.</small>
+            <small>End, Page Down, and the modifier shortcuts trigger screen analysis. Page Up controls voice listening.</small>
           </label>
         </div>
 
@@ -187,7 +204,24 @@
           </div>
           <span id="voice-status" class="status-pill">Microphone off</span>
         </div>
-        <p id="voice-help" class="panel-description">Page Down toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screenshots are not sent with voice questions.</p>
+        <p id="voice-help" class="panel-description">Page Up toggles the microphone. A natural pause ends the sentence, then the answer appears on the voice display. Screenshots are not sent with voice questions.</p>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Voice answer model</span>
+            <select id="voice-model">
+              <option value="gpt-5.6-luna">GPT-5.6 Luna · efficient</option>
+              <option value="gpt-5.6-terra">GPT-5.6 Terra · balanced</option>
+              <option value="gpt-5.6-sol">GPT-5.6 Sol · strongest</option>
+              <option value="custom">Custom model</option>
+            </select>
+            <small>Used only after speech is transcribed. This is independent from the screen model.</small>
+          </label>
+          <label id="voice-custom-model-wrap" class="hidden">
+            <span>Voice custom model ID</span>
+            <input id="voice-custom-model" type="text" autocomplete="off" placeholder="gpt-...">
+            <small>Use an exact model ID available to your API project.</small>
+          </label>
+        </div>
         <div class="form-grid two-up compact-grid">
           <label>
             <span>Voice answer display</span>
@@ -195,14 +229,36 @@
             <small>Keep this separate from the screen-answer display when possible.</small>
           </label>
           <label>
-            <span>End detection</span>
+            <span>Pause sensitivity</span>
             <select id="voice-turn-detection">
-              <option value="semantic-auto">Semantic · natural</option>
-              <option value="semantic-low">Semantic · patient</option>
-              <option value="server">Silence · faster</option>
+              <option value="server">Fast · short pause</option>
+              <option value="semantic-auto">Balanced · natural pause</option>
+              <option value="semantic-low">Patient · longer pause</option>
             </select>
-            <small>Semantic detection waits for the meaning of the sentence to finish.</small>
+            <small>Detects a quiet pause locally before committing the question.</small>
           </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Audio source</span>
+            <select id="voice-audio-device">
+              <option value="">Default microphone</option>
+            </select>
+            <small>Choose the microphone used next time listening starts.</small>
+          </label>
+          <label>
+            <span>Voice text size</span>
+            <div class="input-with-unit"><input id="voice-font-size" type="number" min="10" max="28" step="1"><em>px</em></div>
+            <small>Controls the voice conveyor without changing screen answers.</small>
+          </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Voice answer language</span>
+            <input id="voice-answer-language" type="text" maxlength="80" autocomplete="off" placeholder="English">
+            <small>Controls voice answers only. Use a language name such as English or Spanish.</small>
+          </label>
+          <div class="settings-note"><strong>Separate language control</strong><br>Changing this does not change screen answers.</div>
         </div>
         <div class="form-grid two-up compact-grid">
           <label>
@@ -223,8 +279,9 @@
           </label>
         </div>
         <div class="action-row">
+          <button id="save-voice-settings" class="secondary-button" type="button">Save voice settings</button>
           <button id="voice-enable" class="primary-button" type="button" disabled>Enable microphone</button>
-          <span id="voice-hotkey" class="inline-status">Page Down · voice</span>
+          <span id="voice-hotkey" class="inline-status">Page Up · voice</span>
         </div>
       </section>
 

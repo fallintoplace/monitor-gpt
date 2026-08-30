@@ -84,6 +84,19 @@ test('should analyze again when a one-off prompt override changes', async () => 
   assert.equal(getCalls(), 2);
 });
 
+test('should keep completed screen answers in chronological history', async () => {
+  let answerNumber = 0;
+  const { runner } = makeRunner({
+    requestOpenAI: async () => ({ text: `answer ${++answerNumber}` })
+  });
+
+  await runner.triggerAnalysis({ promptOverride: 'first question' });
+  await runner.triggerAnalysis({ promptOverride: 'second question' });
+
+  assert.equal(runner.snapshot().result, 'answer 2');
+  assert.deepEqual(runner.snapshot().resultHistory.map((entry) => entry.answer), ['answer 1', 'answer 2']);
+});
+
 test('should fall back to a real display when a persisted display is missing', () => {
   const { runner } = makeRunner();
   runner.updateSettings({ sourceDisplayNumber: 99, resultDisplayId: 'missing' });
@@ -120,8 +133,64 @@ test('should route a completed voice transcript to a text-only answer', async ()
 
   assert.equal(runner.snapshot().voice.answer, 'A mutex lets one thread enter a critical section at a time.');
   assert.equal(runner.snapshot().voice.transcript, 'What is a mutex?');
+  assert.equal(runner.snapshot().voice.history.length, 1);
+  assert.equal(runner.snapshot().voice.history[0].transcript, 'What is a mutex?');
   assert.equal(voicePayload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.match(voicePayload.input[0].content[0].text, /What is a mutex/);
+});
+
+test('should show translating while a voice answer is pending', async () => {
+  let releaseAnswer;
+  const pendingAnswer = new Promise((resolve) => {
+    releaseAnswer = resolve;
+  });
+  const { runner } = makeRunner({
+    requestOpenAI: async ({ channel }) => channel === 'voice' ? pendingAnswer : { text: 'screen answer' }
+  });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-1',
+    transcript: 'What is idempotency?'
+  });
+
+  assert.equal(runner.snapshot().voice.status, 'translating');
+  releaseAnswer({ text: 'Idempotency means repeating the same request has the same effect.' });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(runner.snapshot().voice.status, 'on');
+});
+
+test('should only commit a voice buffer after audio was sent', async () => {
+  const { runner } = makeRunner({
+    requestOpenAI: async () => ({ text: 'unused' })
+  });
+  let commits = 0;
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true,
+    commit: () => {
+      commits += 1;
+      return true;
+    }
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+
+  await runner.startVoice();
+  assert.equal(runner.commitVoiceAudio(), false);
+  assert.equal(runner.sendVoiceAudio(Buffer.from([1, 2, 3])), true);
+  assert.equal(runner.commitVoiceAudio(), true);
+  assert.equal(runner.commitVoiceAudio(), false);
+  assert.equal(commits, 1);
 });
 
 test('should choose a third display for voice answers when it is available', () => {
@@ -134,4 +203,26 @@ test('should choose a third display for voice answers when it is available', () 
   runner.updateSettings({ sourceDisplayNumber: 3, resultDisplayId: 'display-2' });
   runner.setDisplays(runner.snapshot().displays);
   assert.equal(runner.snapshot().voiceResultDisplay.id, 'display-1');
+});
+
+test('should choose an unused display for the previous screen answer', () => {
+  const { runner } = makeRunner();
+  runner.setDisplays([
+    { id: 'display-1', captureNumber: 1, label: 'Main display', width: 100, height: 100 },
+    { id: 'display-2', captureNumber: 2, label: 'External display 1', width: 100, height: 100 },
+    { id: 'display-3', captureNumber: 3, label: 'External display 2', width: 100, height: 100 },
+    { id: 'display-4', captureNumber: 4, label: 'External display 3', width: 100, height: 100 }
+  ]);
+  runner.updateSettings({ sourceDisplayNumber: 1, resultDisplayId: 'display-2', voiceResultDisplayId: 'display-3', previousResultDisplayId: '' });
+  runner.setDisplays(runner.snapshot().displays);
+  assert.equal(runner.snapshot().settings.previousResultDisplayId, 'display-4');
+  assert.equal(runner.snapshot().previousResultDisplay.id, 'display-4');
+});
+
+test('should keep the previous answer window enabled when no display is free', () => {
+  const { runner } = makeRunner();
+  runner.updateSettings({ sourceDisplayNumber: 1, resultDisplayId: 'display-2', voiceResultDisplayId: 'display-1', previousResultDisplayId: '' });
+  runner.setDisplays(runner.snapshot().displays);
+  assert.equal(runner.snapshot().settings.previousResultDisplayId, 'auto');
+  assert.equal(runner.snapshot().previousResultDisplay, null);
 });

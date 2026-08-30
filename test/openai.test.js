@@ -4,7 +4,7 @@ const { buildResponsesPayload, buildVoiceAnswerPayload, extractResponseText, req
 
 test('should build an image Responses request with low-priority memory', () => {
   const payload = buildResponsesPayload({
-    settings: { model: 'gpt-5.6-luna', reasoning: 'medium', imageDetail: 'auto' },
+    settings: { model: 'gpt-5.6-luna', reasoning: 'medium', imageDetail: 'auto', screenAnswerLanguage: 'Spanish' },
     prompt: 'Analyze this screen.',
     imageBase64: 'abc123',
     memoryContext: 'LOW-PRIORITY LOCAL MEMORY. Earlier answer.'
@@ -15,6 +15,7 @@ test('should build an image Responses request with low-priority memory', () => {
   assert.equal(payload.input[0].content[1].type, 'input_text');
   assert.equal(payload.input[0].content[2].image_url, 'data:image/png;base64,abc123');
   assert.equal(payload.input[0].content[2].detail, undefined);
+  assert.match(payload.instructions, /Answer in Spanish only/);
 });
 
 test('should extract text from Responses output items', () => {
@@ -24,16 +25,23 @@ test('should extract text from Responses output items', () => {
 
 test('should build a separate text-only voice answer request', () => {
   const payload = buildVoiceAnswerPayload({
-    settings: { model: 'gpt-5.6-luna', reasoning: 'medium', voicePrompt: 'Keep it short.' },
+    settings: { model: 'gpt-5.6-luna', voiceModel: 'gpt-5.6-sol', reasoning: 'medium', voicePrompt: 'Keep it short.', voiceAnswerLanguage: 'Vietnamese' },
     transcript: 'What is a mutex?'
   });
 
-  assert.equal(payload.model, 'gpt-5.6-luna');
+  assert.equal(payload.model, 'gpt-5.6-sol');
   assert.deepEqual(payload.reasoning, { effort: 'medium' });
   assert.equal(payload.store, false);
   assert.match(payload.input[0].content[0].text, /What is a mutex\?/);
   assert.equal(payload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.match(payload.instructions, /Keep it short/);
+  assert.match(payload.instructions, /Answer in Vietnamese only/);
+
+  const customPayload = buildVoiceAnswerPayload({
+    settings: { model: 'gpt-5.6-luna', voiceModel: 'custom', voiceCustomModel: 'voice-model-123' },
+    transcript: 'What is a mutex?'
+  });
+  assert.equal(customPayload.model, 'voice-model-123');
 });
 
 test('should never include the API key in a request error', async () => {

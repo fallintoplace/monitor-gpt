@@ -2,7 +2,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   DEFAULT_SAMPLE_RATE,
-  DEFAULT_REALTIME_MODEL,
   REALTIME_URL,
   RealtimeVoiceSession,
   buildVoiceSessionUpdate,
@@ -45,16 +44,17 @@ class FakeSocket {
   }
 }
 
-test('should configure a transcription session with nested live transcription settings', () => {
+test('should configure a transcription session without server turn detection', () => {
   const event = buildVoiceSessionUpdate({ delay: 'low', turnDetection: 'semantic-low' });
   assert.equal(event.type, 'session.update');
   assert.equal(event.session.type, 'transcription');
   assert.equal(event.session.audio.input.format.rate, DEFAULT_SAMPLE_RATE);
   assert.equal(event.session.audio.input.transcription.model, 'gpt-live-transcribe');
   assert.equal(event.session.audio.input.transcription.delay, 'low');
-  assert.deepEqual(event.session.audio.input.turn_detection, { type: 'semantic_vad', eagerness: 'low' });
+  assert.equal(event.session.audio.input.turn_detection, null);
   assert.equal(JSON.stringify(event).includes('model=gpt-live-transcribe'), false);
-  assert.match(REALTIME_URL, new RegExp(`model=${DEFAULT_REALTIME_MODEL}`));
+  assert.match(REALTIME_URL, /[?&]intent=transcription/);
+  assert.doesNotMatch(REALTIME_URL, /[?&]model=/);
 });
 
 test('should encode PCM audio as an append event', () => {
@@ -82,9 +82,11 @@ test('should open the realtime session and forward transcription events', async 
   await pending;
 
   assert.equal(socket.sent[0].session.type, 'transcription');
-  assert.equal(socket.sent[0].session.audio.input.turn_detection.type, 'server_vad');
+  assert.equal(socket.sent[0].session.audio.input.turn_detection, null);
   assert.equal(session.sendAudio(Buffer.from([1, 2])), true);
+  assert.equal(session.commit(), true);
   assert.deepEqual(socket.sent[1], { type: 'input_audio_buffer.append', audio: 'AQI=' });
+  assert.deepEqual(socket.sent[2], { type: 'input_audio_buffer.commit' });
   socket.emit('message', Buffer.from(JSON.stringify({ type: 'conversation.item.input_audio_transcription.completed', transcript: 'hello' })));
   assert.equal(events.at(-1).transcript, 'hello');
   assert.deepEqual(errors, []);
