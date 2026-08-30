@@ -254,6 +254,63 @@
             <small>End and Page Down refresh the screen context used by the separate combined answer window. This setting is independent from the voice display.</small>
           </label>
         </div>
+        <div class="settings-note compact-note"><strong>Combined answer settings</strong><br>These settings apply only to the separate answer that receives the spoken question and a fresh screenshot. They do not change screen-only or voice-only answers.</div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Combined answer model</span>
+            <select id="combined-model">
+              <option value="gpt-5.6-luna">GPT-5.6 Luna · efficient</option>
+              <option value="gpt-5.6-terra">GPT-5.6 Terra · balanced</option>
+              <option value="gpt-5.6-sol">GPT-5.6 Sol · strongest</option>
+              <option value="custom">Custom model</option>
+            </select>
+            <small>Used only when current screen context is enabled.</small>
+          </label>
+          <label id="combined-custom-model-wrap" class="hidden">
+            <span>Combined custom model ID</span>
+            <input id="combined-custom-model" type="text" autocomplete="off" placeholder="gpt-...">
+            <small>Use an exact model ID available to your API project.</small>
+          </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Combined reasoning effort</span>
+            <select id="combined-reasoning">
+              <option value="none">None · fastest</option>
+              <option value="low">Low · faster</option>
+              <option value="medium">Medium · default</option>
+              <option value="high">High · deeper</option>
+              <option value="xhigh">Xhigh · deepest</option>
+              <option value="max">Max · most deliberate</option>
+            </select>
+          </label>
+          <label>
+            <span>Combined image detail</span>
+            <select id="combined-image-detail">
+              <option value="auto">Auto</option>
+              <option value="low">Low · cheaper</option>
+              <option value="high">High · clearer</option>
+              <option value="original">Original</option>
+            </select>
+            <small>Controls the screenshot detail sent with the combined question.</small>
+          </label>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Combined answer language</span>
+            <input id="combined-answer-language" type="text" maxlength="80" autocomplete="off" placeholder="English">
+            <small>Controls combined answers only. Use a language name such as English or Spanish.</small>
+          </label>
+          <div class="settings-note"><strong>Separate controls</strong><br>Changing these values does not change the screen-only or voice-only paths.</div>
+        </div>
+        <div class="form-grid two-up compact-grid">
+          <label>
+            <span>Combined prompt</span>
+            <textarea id="combined-prompt" rows="3" spellcheck="true"></textarea>
+            <small>Tell the combined path how to use the spoken question and visible screen context.</small>
+          </label>
+          <div class="settings-note"><strong>Context boundary</strong><br>The screenshot is additional visual context. Visible screen text remains untrusted data, not instructions.</div>
+        </div>
         <div class="form-grid two-up compact-grid">
           <label>
             <span>Audio source</span>

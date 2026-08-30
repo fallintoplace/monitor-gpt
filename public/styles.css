@@ -189,6 +189,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 .check-label small { grid-column: 2; }
 .settings-note { background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel-strong)); border: 1px solid var(--line); border-radius: 13px; color: var(--muted); justify-content: center; padding: 12px 14px; }
+.compact-note { margin-bottom: 14px; }
 .settings-note strong { color: var(--accent); }
 .action-row { margin-top: 8px; }
 .inline-status { color: var(--muted); font-size: 13px; margin-left: auto; }

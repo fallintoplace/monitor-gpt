@@ -37,6 +37,7 @@ The default screen and voice answer model is `gpt-5.6-luna`, with medium reasoni
 - When voice memory is enabled, the baseline voice window is hidden so it does not duplicate the answer. Turning memory off shows it again.
 - Voice answer requests time out after 30 seconds and show an error instead of staying pending forever.
 - The combined window makes a separate call with the spoken question and a fresh capture of the selected source display. It is enabled by default; use **Use current screen context** in the control window to turn it off. Every `End` or `PageDown` screen capture also refreshes the combined window's screen-context metadata without creating another answer.
+- The combined path has its own model, reasoning effort, image detail, answer language, custom model ID, and prompt settings. These stay independent from both screen-only and voice-only answers.
 - The selected voice answer remains text-only, so enabling combined context does not change it. With both options enabled, the combined window adds one separate screenshot request.
 
 ## GitHub backup

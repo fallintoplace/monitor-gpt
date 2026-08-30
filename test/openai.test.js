@@ -61,11 +61,16 @@ test('should put low-priority voice memory before the current question', () => {
 test('should build a combined voice request with the current screen image', () => {
   const payload = buildCombinedVoiceAnswerPayload({
     settings: {
-      voiceModel: 'gpt-5.6-terra',
-      reasoning: 'high',
-      imageDetail: 'high',
-      voiceAnswerLanguage: 'English',
-      voicePrompt: 'Keep it interview-ready.'
+      voiceModel: 'gpt-5.6-luna',
+      reasoning: 'low',
+      imageDetail: 'low',
+      voiceAnswerLanguage: 'Vietnamese',
+      voicePrompt: 'Voice-only prompt.',
+      combinedModel: 'gpt-5.6-terra',
+      combinedReasoning: 'high',
+      combinedImageDetail: 'high',
+      combinedAnswerLanguage: 'English',
+      combinedPrompt: 'Keep the combined answer interview-ready.'
     },
     transcript: 'Write tests for this exercise.',
     imageBase64: 'screen-bytes'
@@ -79,6 +84,25 @@ test('should build a combined voice request with the current screen image', () =
   assert.match(payload.input[0].content.at(-2).text, /Current screen context/);
   assert.match(payload.instructions, /current screen image/);
   assert.match(payload.instructions, /Answer in English only/);
+  assert.match(payload.instructions, /Keep the combined answer interview-ready/);
+  assert.doesNotMatch(payload.instructions, /Voice-only prompt/);
+});
+
+test('should use the combined custom model when configured', () => {
+  const payload = buildCombinedVoiceAnswerPayload({
+    settings: {
+      combinedModel: 'custom',
+      combinedCustomModel: 'combined-model-123',
+      combinedPrompt: 'Use the visible code.',
+      combinedAnswerLanguage: 'Spanish'
+    },
+    transcript: 'Explain this.',
+    imageBase64: 'screen-bytes'
+  });
+
+  assert.equal(payload.model, 'combined-model-123');
+  assert.match(payload.instructions, /Use the visible code/);
+  assert.match(payload.instructions, /Answer in Spanish only/);
 });
 
 test('should never include the API key in a request error', async () => {

@@ -140,8 +140,12 @@
     setValue('custom-model', settings.customModel);
     setValue('voice-model', settings.voiceModel);
     setValue('voice-custom-model', settings.voiceCustomModel);
+    setValue('combined-model', settings.combinedModel);
+    setValue('combined-custom-model', settings.combinedCustomModel);
     setValue('reasoning', settings.reasoning);
     setValue('image-detail', settings.imageDetail);
+    setValue('combined-reasoning', settings.combinedReasoning);
+    setValue('combined-image-detail', settings.combinedImageDetail);
     setValue('trigger-mode', settings.triggerMode);
     setValue('screen-answer-language', settings.screenAnswerLanguage);
     setValue('analyze-every', Math.round(settings.analyzeEveryMs / 1000));
@@ -151,11 +155,13 @@
     setValue('result-layout', settings.resultLayout);
     setValue('theme', settings.theme);
     if (force || document.activeElement !== $('voice-prompt')) setValue('voice-prompt', settings.voicePrompt);
+    if (force || document.activeElement !== $('combined-prompt')) setValue('combined-prompt', settings.combinedPrompt);
     setValue('voice-turn-detection', settings.voiceTurnDetection);
     setValue('voice-transcription-delay', settings.voiceTranscriptionDelay);
     setValue('voice-audio-device', settings.voiceAudioDeviceId);
     setValue('voice-font-size', settings.voiceFontSizePx);
     setValue('voice-answer-language', settings.voiceAnswerLanguage);
+    setValue('combined-answer-language', settings.combinedAnswerLanguage);
     $('voice-memory-enabled').checked = Boolean(settings.voiceMemoryEnabled);
     setValue('voice-memory-context', settings.voiceMemoryContextAnswers);
     $('voice-screen-context-enabled').checked = Boolean(settings.voiceScreenContextEnabled);
@@ -166,6 +172,7 @@
     setValue('memory-context', settings.memoryContextAnswers);
     $('custom-model-wrap').classList.toggle('hidden', settings.model !== 'custom');
     $('voice-custom-model-wrap').classList.toggle('hidden', settings.voiceModel !== 'custom');
+    $('combined-custom-model-wrap').classList.toggle('hidden', settings.combinedModel !== 'custom');
     applyTheme(settings.theme);
   }
 
@@ -176,8 +183,12 @@
       customModel: $('custom-model').value,
       voiceModel: $('voice-model').value,
       voiceCustomModel: $('voice-custom-model').value,
+      combinedModel: $('combined-model').value,
+      combinedCustomModel: $('combined-custom-model').value,
       reasoning: $('reasoning').value,
       imageDetail: $('image-detail').value,
+      combinedReasoning: $('combined-reasoning').value,
+      combinedImageDetail: $('combined-image-detail').value,
       triggerMode: $('trigger-mode').value,
       screenAnswerLanguage: $('screen-answer-language').value,
       analyzeEveryMs: Math.max(1, Number($('analyze-every').value || 15)) * 1000,
@@ -197,11 +208,13 @@
       voiceResultDisplayId: $('voice-result-display').value || '',
       combinedResultDisplayId: $('combined-result-display').value || '',
       voicePrompt: $('voice-prompt').value,
+      combinedPrompt: $('combined-prompt').value,
       voiceTurnDetection: $('voice-turn-detection').value,
       voiceTranscriptionDelay: $('voice-transcription-delay').value,
       voiceAudioDeviceId: $('voice-audio-device').value || '',
       voiceFontSizePx: Math.max(10, Number($('voice-font-size').value || 16)),
       voiceAnswerLanguage: $('voice-answer-language').value,
+      combinedAnswerLanguage: $('combined-answer-language').value,
       voiceScreenContextEnabled: $('voice-screen-context-enabled').checked,
       voiceMemoryEnabled: $('voice-memory-enabled').checked,
       voiceMemoryContextAnswers: Math.max(0, Number($('voice-memory-context').value || 0))
@@ -568,10 +581,11 @@
   }
 
   function bind() {
-    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'reasoning', 'image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'combined-result-display', 'voice-screen-context-enabled', 'voice-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language', 'voice-memory-enabled', 'voice-memory-context']) {
+    for (const id of ['prompt', 'model', 'custom-model', 'voice-model', 'voice-custom-model', 'combined-model', 'combined-custom-model', 'reasoning', 'image-detail', 'combined-reasoning', 'combined-image-detail', 'trigger-mode', 'screen-answer-language', 'analyze-every', 'result-poll', 'max-image-width', 'result-font-size', 'result-layout', 'theme', 'skip-unchanged', 'result-autofit', 'memory-enabled', 'memory-max', 'memory-context', 'source-display', 'result-display', 'previous-result-display', 'voice-result-display', 'combined-result-display', 'voice-screen-context-enabled', 'voice-prompt', 'combined-prompt', 'voice-turn-detection', 'voice-transcription-delay', 'voice-audio-device', 'voice-font-size', 'voice-answer-language', 'combined-answer-language', 'voice-memory-enabled', 'voice-memory-context']) {
       $(id).addEventListener('input', () => {
         if (id === 'model') $('custom-model-wrap').classList.toggle('hidden', $('model').value !== 'custom');
         if (id === 'voice-model') $('voice-custom-model-wrap').classList.toggle('hidden', $('voice-model').value !== 'custom');
+        if (id === 'combined-model') $('combined-custom-model-wrap').classList.toggle('hidden', $('combined-model').value !== 'custom');
         if (id === 'theme') applyTheme($('theme').value);
         scheduleSave();
       });
