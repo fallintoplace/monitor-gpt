@@ -151,7 +151,7 @@
     document.title = `Monitor GPT · ${combinedView ? 'Combined' : memoryView ? 'Voice Memory' : 'Voice'}`;
     document.querySelector('.result-label').textContent = viewLabel;
     $('voice-footer-mode').textContent = combinedView
-      ? 'COMBINED · HOME TOGGLE'
+      ? 'COMBINED · HOME TO SHOW'
       : memoryView
       ? 'VOICE MEMORY · PAGE UP TOGGLE'
       : 'VOICE · NO MEMORY · PAGE UP TOGGLE';

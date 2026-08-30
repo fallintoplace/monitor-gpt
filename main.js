@@ -622,7 +622,7 @@ function registerGlobalShortcuts() {
   const registeredCombined = [];
   for (const accelerator of combined) {
     try {
-      if (globalShortcut.register(accelerator, () => void toggleCombinedWindow())) {
+      if (globalShortcut.register(accelerator, () => void showCombinedWindow())) {
         registeredCombined.push(accelerator);
         registeredAccelerators.push(accelerator);
       }
@@ -642,19 +642,15 @@ function requestVoiceToggle() {
   if (runner?.snapshot?.().voice?.enabled) void runner.stopVoice({ graceful: false });
 }
 
-async function toggleCombinedWindow() {
+async function showCombinedWindow() {
   try {
     if (!combinedResultWindow || combinedResultWindow.isDestroyed()) await ensureWindows();
     if (!combinedResultWindow || combinedResultWindow.isDestroyed()) return;
     positionCombinedResultWindow();
-    if (combinedResultWindow.isVisible()) {
-      combinedResultWindow.hide();
-    } else {
-      combinedResultWindow.show();
-      combinedResultWindow.focus();
-    }
+    combinedResultWindow.show();
+    combinedResultWindow.focus();
   } catch (error) {
-    console.warn('Could not toggle combined window:', error.message);
+    console.warn('Could not show combined window:', error.message);
   }
 }
 
