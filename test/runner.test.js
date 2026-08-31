@@ -444,6 +444,52 @@ test('should answer voice questions with and without the previous five turns', a
   assert.equal(memory.list().at(-1).memoryAnswer, 'memory answer 2');
 });
 
+test('should pass the previous voice turns to the combined answer', async () => {
+  const calls = [];
+  let answerNumber = 0;
+  const { runner } = makeRunner({
+    settings: { voiceScreenContextEnabled: true },
+    requestOpenAI: async ({ payload, channel }) => {
+      calls.push({ payload, channel });
+      if (channel === 'voice-memory') return { text: `memory answer ${++answerNumber}` };
+      if (channel === 'voice-screen') return { text: 'combined answer' };
+      return { text: 'unused' };
+    }
+  });
+  const voiceSession = {
+    start: async () => ({ connected: true }),
+    stop: () => {},
+    sendAudio: () => true
+  };
+  runner.setApiKeyReady(true);
+  runner.setVoiceSession(voiceSession);
+  await runner.startVoice();
+
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-combined-memory-1',
+    transcript: 'What is CORS?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  runner.handleVoiceEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'voice-item-combined-memory-2',
+    transcript: 'What is idempotency?'
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const combinedCalls = calls.filter((call) => call.channel === 'voice-screen');
+  assert.equal(combinedCalls.length, 2);
+  const secondCombinedCall = combinedCalls.at(-1);
+  const content = secondCombinedCall.payload.input[0].content;
+  const text = content.map((part) => part.text || '').join('\n');
+  assert.match(text, /LOW-PRIORITY VOICE MEMORY/);
+  assert.match(text, /What is CORS/);
+  assert.match(text, /memory answer 1/);
+  assert.match(text, /What is idempotency/);
+  assert.equal(content.at(-1).type, 'input_image');
+});
+
 test('should keep the baseline voice window when voice memory comparison is disabled', async () => {
   const { runner, getCalls } = makeRunner();
   runner.updateSettings({ voiceMemoryEnabled: false });

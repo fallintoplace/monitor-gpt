@@ -73,7 +73,8 @@ test('should build a combined voice request with the current screen image', () =
       combinedPrompt: 'Keep the combined answer interview-ready.'
     },
     transcript: 'Write tests for this exercise.',
-    imageBase64: 'screen-bytes'
+    imageBase64: 'screen-bytes',
+    memoryContext: 'LOW-PRIORITY VOICE MEMORY. Earlier question: What is CORS?'
   });
 
   assert.equal(payload.model, 'gpt-5.6-terra');
@@ -81,6 +82,7 @@ test('should build a combined voice request with the current screen image', () =
   assert.equal(payload.input[0].content.at(-1).type, 'input_image');
   assert.equal(payload.input[0].content.at(-1).image_url, 'data:image/png;base64,screen-bytes');
   assert.equal(payload.input[0].content.at(-1).detail, 'high');
+  assert.match(payload.input[0].content[0].text, /LOW-PRIORITY VOICE MEMORY/);
   assert.match(payload.input[0].content.at(-2).text, /Current screen context/);
   assert.match(payload.instructions, /current screen image/);
   assert.match(payload.instructions, /Answer in English only/);
