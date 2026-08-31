@@ -438,6 +438,8 @@ test('should answer voice questions with and without the previous five turns', a
   const memoryText = secondMemoryCall.payload.input[0].content.map((part) => part.text || '').join('\n');
   assert.match(memoryText, /What is CORS/);
   assert.match(memoryText, /memory answer 1/);
+  assert.match(memoryText, /Earlier answer: memory answer 1/);
+  assert.doesNotMatch(memoryText, /Baseline answer/);
   assert.match(memoryText, /What is idempotency/);
   assert.equal(secondMemoryCall.payload.input[0].content.some((part) => part.type === 'input_image'), false);
   assert.equal(memory.list().filter((entry) => entry.kind === 'voice').length, 2);
